@@ -74,7 +74,7 @@ check('similar_artists ranks candidates by shared tags', similarArtists.candidat
 check('similar_artists reports expression similarity', similarArtists.seed.expression_profile.length > 0 && similarArtists.candidates.every((candidate) => candidate.expression && candidate.expression.cosine >= 0 && candidate.expression.cosine <= 1), JSON.stringify(similarArtists.candidates.map((candidate) => [candidate.name, candidate.expression])).slice(0, 300))
 
 const similarWithExamples = await call('danbooru_similar_artists', { artist: 'satou_kuuki', limit: 2, profile_tags: 3, examples: 1 })
-check('similar_artists attaches visual examples on request', similarWithExamples.candidates.length > 0 && similarWithExamples.candidates.every((candidate) => Array.isArray(candidate.examples) && candidate.examples.length === 1 && typeof candidate.examples[0].sample_url === 'string'), JSON.stringify(similarWithExamples.candidates.map((candidate) => candidate.examples)).slice(0, 300))
+check('similar_artists attaches visual examples on request', similarWithExamples.candidates.length > 0 && similarWithExamples.candidates.every((candidate) => Array.isArray(candidate.examples) && candidate.examples.length === 1 && typeof candidate.examples[0].sample_url === 'string' && Array.isArray(candidate.examples[0].matched_tags)), JSON.stringify(similarWithExamples.candidates.map((candidate) => candidate.examples)).slice(0, 300))
 
 const posts = await call('danbooru_search_posts', { tags: 'hatsune_miku solo', limit: 3 })
 check('search_posts returns posts', posts.count > 0, JSON.stringify(posts).slice(0, 300))

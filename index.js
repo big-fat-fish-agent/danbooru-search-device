@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.8.0'
+const VERSION = '0.8.1'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -99,6 +99,9 @@ const SIMILARITY_STOPLIST = new Set([
   'blue_background', 'black_background', 'pink_background', 'grey_background', 'yellow_background',
 ])
 const SIMILARITY_TOTAL_POSTS = 8_600_000
+
+/** Compositions that hide the face, so an example post cannot show the required expression. */
+const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame', 'faceless', 'faceless_male', 'no_face', 'lower_body', 'feet_out_of_frame'])
 
 /** Expression tags used to build a facial-expression profile and compare candidates with the seed. */
 const EXPRESSION_TAGS = new Set([
@@ -927,6 +930,7 @@ export function apply(ctx, rawConfig = {}) {
         profile_tags: { type: 'integer', minimum: 3, maximum: 10, description: 'Seed style tags used as the similarity profile (default 6).' },
         min_shared: { type: 'integer', minimum: 1, maximum: 10, description: 'Minimum shared style tags for a candidate (default 2).' },
         examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate for visual confirmation (default 0 = none; each costs one request).' },
+        example_tags: { type: 'string', description: 'Comma-separated tags every example post must carry (default: the seed expression tags, so the face/expression is actually visible). Posts whose composition hides the face (ass_focus, from_behind, head_out_of_frame, ...) are skipped.' },
         expression_tags: { type: 'integer', minimum: 0, maximum: 6, description: 'Seed expression tags used to build the expression profile and expand candidates (default 4; 0 disables expression matching).' },
         expression_weight: { type: 'number', minimum: 0, maximum: 1, description: 'Weight of expression similarity in the final score (default 0.5).' },
       }, ['artist']),
@@ -938,6 +942,10 @@ export function apply(ctx, rawConfig = {}) {
         const profileTagCount = clamp(args?.profile_tags, 3, 10, 6)
         const minShared = clamp(args?.min_shared, 1, 10, 2)
         const exampleCount = clamp(args?.examples, 0, 3, 0)
+        const exampleRequired = String(args?.example_tags ?? '')
+          .split(/[,\s]+/)
+          .map((tag) => tag.trim())
+          .filter(Boolean)
         const expressionTagCount = clamp(args?.expression_tags, 0, 6, 4)
         const expressionWeight = clampFloat(args?.expression_weight, 0, 1, 0.5)
 
@@ -1086,18 +1094,32 @@ export function apply(ctx, rawConfig = {}) {
         candidates.sort((left, right) => right.score - left.score || right.post_count - left.post_count || left.name.localeCompare(right.name))
         candidates.splice(limit)
 
-        // Visual confirmation is left to the caller: attach sample URLs so the agent can read_image them.
+        // Visual confirmation is left to the caller: attach sample URLs. Examples prefer posts that
+        // carry the required expression tags and do not hide the face.
         if (exampleCount > 0) {
+          const requiredTags = exampleRequired.length > 0 ? exampleRequired : [...seedExpression.keys()]
           for (const candidate of candidates) {
             try {
-              const samplePosts = await request('/posts.json', { tags: `${candidate.name} order:score`, limit: exampleCount }, { signal: exec?.signal, ttlMs: TTL.posts })
-              candidate.examples = (Array.isArray(samplePosts) ? samplePosts : []).map((post) => ({
-                post_id: post.id,
-                post_url: `${ORIGIN}/posts/${post.id}`,
-                sample_url: post.large_file_url ?? post.file_url ?? null,
-                preview_url: post.preview_file_url ?? null,
-                rating: post.rating ?? null,
-              }))
+              const samplePosts = await request('/posts.json', { tags: `${candidate.name} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
+              const all = Array.isArray(samplePosts) ? samplePosts : []
+              const matches = all.filter((post) => {
+                const general = new Set(splitTags(post.tag_string_general))
+                const hidesFace = [...FACE_HIDDEN_TAGS].some((tag) => general.has(tag))
+                const hasRequired = requiredTags.length === 0 || requiredTags.some((tag) => general.has(tag))
+                return !hidesFace && hasRequired
+              })
+              const picked = (matches.length > 0 ? matches : all).slice(0, exampleCount)
+              candidate.examples = picked.map((post) => {
+                const general = splitTags(post.tag_string_general)
+                return {
+                  post_id: post.id,
+                  post_url: `${ORIGIN}/posts/${post.id}`,
+                  sample_url: post.large_file_url ?? post.file_url ?? null,
+                  preview_url: post.preview_file_url ?? null,
+                  rating: post.rating ?? null,
+                  matched_tags: requiredTags.filter((tag) => general.includes(tag)),
+                }
+              })
             } catch {
               candidate.examples = []
             }
