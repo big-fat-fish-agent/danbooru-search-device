@@ -1,8 +1,15 @@
-# dsh-danbooru-tools
+# D站搜索装置（dsh-danbooru-tools）
 
 给 DeepSeek Harness 用的**只读 Danbooru 工具插件**：纯 Host 插件、零运行时依赖、不写任何文件，只用官方 JSON API。
 
 它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
+
+## 安装（DSH profile）
+
+1. 克隆本仓库到任意目录：`git clone https://github.com/big-fat-fish-agent/danbooru-search-device.git`
+2. 在 `$DSH_HOME/profiles/<profile>/package.json` 的 `dependencies` 里加：`"@local/dsh-danbooru-tools": "link:<克隆路径>"`
+3. 把 `"@local/dsh-danbooru-tools"` 加进同一文件的 `dsh.bundles` 列表
+4. 重启 DSH（首次安装需要重启；之后改动只需在 `plugin_manager` 里关→开热重载）
 
 ## 工具
 
