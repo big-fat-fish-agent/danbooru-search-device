@@ -22,6 +22,7 @@
 | `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
+| `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）聚合该年画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`color_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
 | `danbooru_save_credentials` | 把登录名与 API key 存进 Harness 凭据库（私有文件） | `login`、`apiKey`、`clear` |
@@ -105,6 +106,26 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - 局限：tag 层面的表情相似（用哪些表情、多常用）仍不等于「表情画法」相似（眼型、嘴形、腮红画法）；必须 `read_image` 目视后才能下结论
 - 用法：`danbooru_similar_artists(artist="satou_kuuki", limit=10, examples=3)`
 
+## 以图搜画师（图 → 画师）
+
+`danbooru_artists_from_image` 把「以图搜画师」固化为**分层优先级检索**（插件没有视觉能力，由 Agent 看图后提供 tag 分组）：
+
+| 维度 | 说明 | `mode="person"` 权重 | `mode="style"` 权重 |
+|---|---|---|---|
+| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.40 | 0.20 |
+| `expression` 表情 | 表情 tag | 0.25 | 0.10 |
+| `technique` 绘制手法 | 材质/上色/线条（`latex`、`shiny_clothes`…） | 0.20 | 0.40 |
+| `color` 色彩 | 背景/主色/饱和度 | 0.10 | 0.25 |
+| `tag` 泛 tag | 其余描述 tag | 0.05 | 0.05 |
+
+- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 色彩 → 人物 → 表情 → tag
+- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 → 表情 → 绘制手法 → 色彩 → tag
+- 每个维度取前两个 tag 做一次「该年 + `order:score`」检索（100 条），按画师出现频率加权累加；空结果自动回退到单 tag 检索
+- 成本：约 5–10 次请求（维度数 × 1–2 次）+ `examples` 次
+- 用法：
+  `danbooru_artists_from_image(image_tags="latex bodysuit, leopard_print", person_tags="huge_breasts, thick_thighs", expression_tags="closed_mouth, half-closed_eyes", technique_tags="latex, shiny_clothes", color_tags="white_background, blue_theme", year=2025, limit=10, examples=3)`
+- 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
+
 ## 输出约定（画师 vs 图片）
 
 - **画师列表**：每位画师保留 **3 张例图**（不同作品），并**分行纵向排版**（每人一个块：渲染 / 体态 / 面部 / 主页 / 例图），不要用宽表格，避免被横向裁切
@@ -127,7 +148,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.3 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.9.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -187,6 +208,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.9.0**：新增 `danbooru_artists_from_image`（以图搜画师，分层优先级：人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）
 - **0.8.3**：清理过时文档（重复的安装章节、旧的自检耗时、工具数量），DSH 内与仓库说明同步为当前能力（表情画像/余弦、例图软规则、furry 降权）
 - **0.8.2**：例图改为软规则（默认优先带脸，`allow_no_face=true` 放行无脸构图）；`furry` 类 tag 相似度权重 ×0.05；过滤无 `sample_url` 的例图
 - **0.8.1**：例图强制匹配需求 tag 并跳过隐藏脸的构图（已由 0.8.2 改为软规则）

@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.8.3'
+const VERSION = '0.9.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -112,6 +112,19 @@ const SIMILARITY_DOWNWEIGHT = new Map([
   ['humanoid_furry', 0.05],
 ])
 const tagDownweight = (name) => SIMILARITY_DOWNWEIGHT.get(name) ?? 1
+
+/** Parse a comma/space separated tag list from a tool argument. */
+const parseTagList = (text) => String(text ?? '').split(/[,\s]+/).map((tag) => tag.trim()).filter(Boolean)
+
+/**
+ * Layered priority weights for image-to-artist search.
+ * person mode: person style > expression style > rendering technique > color palette > tags.
+ * style mode: rendering technique + color palette first, then person/expression/tags.
+ */
+const IMAGE_SEARCH_WEIGHTS = {
+  person: { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 },
+  style: { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 },
+}
 
 /** Expression tags used to build a facial-expression profile and compare candidates with the seed. */
 const EXPRESSION_TAGS = new Set([
@@ -1147,6 +1160,129 @@ export function apply(ctx, rawConfig = {}) {
           method: 'tag-profile similarity (co-occurrence) + expression cosine',
           candidates,
           note: 'Candidate generation uses shared Danbooru tags (frequent, non-universal seed tags), and expression similarity is measured separately: the seed\'s expression tags (smile, blush, half-closed_eyes, ...) are expanded to artists sharing them, then each finalist\'s expression-tag frequency profile is compared with the seed by cosine and folded into score (expression_weight, default 0.5). This is a heuristic, not visual embedding similarity. Confirm candidates visually on rendering (shading, highlights, palette), body build/pose, face features and expressions; for an artist-list deliverable keep three sample images per artist, for a post list keep one sample per post.',
+        }
+      },
+    },
+    {
+      name: 'danbooru_artists_from_image',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Each group becomes one year-scoped post search and the tool ranks artists by layered priority. mode="person" (default): person/character style 0.4 > expression style 0.25 > rendering technique 0.2 > color palette 0.1 > general tags 0.05. mode="style": rendering technique 0.4 > color palette 0.25 > person style 0.2 > expression 0.1 > tags 0.05. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      parameters: parameters({
+        image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
+        person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
+        expression_tags: { type: 'string', description: 'Tags for the facial expression, e.g. "half-closed_eyes, blush, closed_mouth".' },
+        technique_tags: { type: 'string', description: 'Tags for rendering technique/material, e.g. "latex, shiny_clothes, shiny_skin".' },
+        color_tags: { type: 'string', description: 'Tags for palette/color style, e.g. "white_background, blue_theme, colorful".' },
+        mode: { type: 'string', enum: ['person', 'style'], description: 'Priority mode: person (default) ranks character/expression style first; style ranks rendering technique and color palette first.' },
+        year: { type: 'integer', minimum: MIN_YEAR, description: 'Calendar year to search (default: current year).' },
+        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
+        examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate (default 0; each costs one request).' },
+        example_tags: { type: 'string', description: 'Comma-separated tags examples should carry (default: expression_tags, else image_tags).' },
+        allow_no_face: { type: 'boolean', description: 'Set true only when the user explicitly wants back views, silhouettes or lower-body crops; otherwise examples prefer a visible face.' },
+      }, ['image_tags']),
+      output,
+      async execute(args, exec) {
+        const imageTags = parseTagList(args?.image_tags)
+        if (imageTags.length === 0) throw new Error('image_tags is required')
+        const mode = args?.mode === 'style' ? 'style' : 'person'
+        const weights = mode === 'style'
+          ? { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 }
+          : { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 }
+        const year = parseYear(args?.year) ?? latestYear()
+        const limit = clamp(args?.limit, 1, 25, 10)
+        const exampleCount = clamp(args?.examples, 0, 3, 0)
+
+        const groups = [
+          { key: 'person', tags: parseTagList(args?.person_tags) },
+          { key: 'expression', tags: parseTagList(args?.expression_tags) },
+          { key: 'technique', tags: parseTagList(args?.technique_tags) },
+          { key: 'color', tags: parseTagList(args?.color_tags) },
+          { key: 'tag', tags: imageTags },
+        ].filter((group) => group.tags.length > 0)
+        const totalWeight = groups.reduce((sum, group) => sum + (weights[group.key] ?? 0), 0) || 1
+
+        const standing = new Map()
+        const groupStats = []
+        for (const group of groups) {
+          const queries = []
+          if (group.tags.length >= 2) queries.push(`${group.tags[0]} ${group.tags[1]}`)
+          queries.push(group.tags[0])
+          let used = null
+          let posts = []
+          for (const query of [...new Set(queries)]) {
+            let rows
+            try {
+              rows = await request('/posts.json', { tags: `${query} ${yearTag(year)} order:score`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+            } catch {
+              // Anonymous accounts allow fewer tag tokens; retry without the order metatag.
+              rows = await request('/posts.json', { tags: `${query} ${yearTag(year)}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+            }
+            const data = Array.isArray(rows) ? rows : []
+            if (data.length === 0) continue
+            used = query
+            posts = data
+            break
+          }
+          const weight = (weights[group.key] ?? 0) / totalWeight
+          for (const post of posts) {
+            for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
+              const entry = standing.get(name) ?? { name, score: 0, posts: 0, dimensions: {} }
+              entry.score += weight / posts.length
+              entry.posts += 1
+              entry.dimensions[group.key] = (entry.dimensions[group.key] ?? 0) + 1
+              standing.set(name, entry)
+            }
+          }
+          groupStats.push({ key: group.key, query: used, posts: posts.length })
+        }
+
+        const candidates = [...standing.values()]
+          .sort((left, right) => right.score - left.score || right.posts - left.posts || left.name.localeCompare(right.name))
+          .slice(0, limit)
+          .map((entry) => ({
+            name: entry.name,
+            artist_url: artistPostsUrl(entry.name, year),
+            score: round(entry.score * 100, 2),
+            posts: entry.posts,
+            dimensions: entry.dimensions,
+          }))
+
+        if (exampleCount > 0) {
+          const requested = parseTagList(args?.example_tags)
+          const requiredTags = requested.length > 0 ? requested : (groups.find((group) => group.key === 'expression')?.tags ?? imageTags)
+          const allowNoFace = args?.allow_no_face === true
+          for (const candidate of candidates) {
+            try {
+              const data = await request('/posts.json', { tags: `${candidate.name} ${yearTag(year)} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
+              const rows = (Array.isArray(data) ? data : [])
+                .filter((post) => post.large_file_url || post.file_url)
+                .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
+              const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
+              const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
+              const preferred = rows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
+              const expressionOnly = rows.filter((row) => hasRequired(row))
+              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : rows).slice(0, exampleCount)
+              candidate.examples = picked.map((row) => ({
+                post_id: row.post.id,
+                post_url: `${ORIGIN}/posts/${row.post.id}`,
+                sample_url: row.post.large_file_url ?? row.post.file_url ?? null,
+                preview_url: row.post.preview_file_url ?? null,
+                rating: row.post.rating ?? null,
+                matched_tags: requiredTags.filter((tag) => row.general.includes(tag)),
+              }))
+            } catch {
+              candidate.examples = []
+            }
+          }
+        }
+
+        return {
+          method: 'image tags → year-scoped artist frequency, layered priority',
+          mode,
+          year,
+          weights,
+          groups: groupStats,
+          candidates,
+          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for the given year. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
         }
       },
     },
