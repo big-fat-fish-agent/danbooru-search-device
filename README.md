@@ -8,12 +8,37 @@
 
 ## 安装（DSH profile）
 
-**下载包**：[Releases → v0.12.0 → `danbooru-tools-0.12.0.zip`](https://github.com/big-fat-fish-agent/danbooru-search-device/releases/latest)（解压后目录即可直接安装，GitHub 的 Code → Download ZIP 也等效）。
+本插件是 DSH bundle（纯 Host、零运行时依赖），以下三种方式任选其一。首次装完需重启 DSH；之后更新插件文件只需在 `plugin_manager` 里关→开热重载，不用重启。
 
-1. 克隆本仓库到任意目录：`git clone https://github.com/big-fat-fish-agent/danbooru-search-device.git`
+### 方案 A：下载包（推荐，不需要 git）
+
+1. 下载最新 zip：[Releases → v0.12.1 → `danbooru-tools-0.12.1.zip`](https://github.com/big-fat-fish-agent/danbooru-search-device/releases/latest)
+2. 解压到任意目录，得到 `danbooru-tools/`
+3. 安装：对 Agent 说「用 `plugin_manager` 的 `install_bundle` 安装 `<解压目录绝对路径>`」，或在 DSH 插件管理界面选择该目录
+4. 重启 DSH
+
+- 适合：不想装 git、只想能用
+- 更新方式：重新下载 zip 覆盖目录 → 关→开热重载
+
+### 方案 B：Git 克隆 + profile link（推荐长期使用 / 二次开发）
+
+1. `git clone https://github.com/big-fat-fish-agent/danbooru-search-device.git`
 2. 在 `$DSH_HOME/profiles/<profile>/package.json` 的 `dependencies` 里加：`"@local/dsh-danbooru-tools": "link:<克隆路径>"`
 3. 把 `"@local/dsh-danbooru-tools"` 加进同一文件的 `dsh.bundles` 列表
-4. 重启 DSH（首次安装需要重启；之后改动只需在 `plugin_manager` 里关→开热重载）
+4. 重启 DSH
+
+- 适合：想跟踪更新、改代码、看 git 历史
+- 更新方式：`git pull` → 关→开热重载（不用重装）
+
+### 方案 C：GitHub 源码 zip（Release 不可用时的兜底）
+
+仓库页 **Code → Download ZIP**，解压后按 **方案 A 的第 3–4 步**安装。内容与 Release 包相同，只是不带版本号标记。
+
+### 卸载
+
+`plugin_manager` 的 `remove_bundle`；或删除 profile `package.json` 里的依赖与 `dsh.bundles` 条目后重启 DSH。
+
+装好后可选自检：`node verify.mjs`（约 5 分钟，真实请求，不写文件）。
 
 ## 工具
 
@@ -200,10 +225,6 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 改 `config` 需要改本目录的 `cordis.patch.yml` 并重装 bundle；改环境变量则重启 DSH 即可。
 
-## 卸载
-
-`plugin_manager` 的 `remove_bundle`，或从 profile 的 `package.json` 里移除 `@local/dsh-danbooru-tools` 依赖与 `dsh.bundles` 条目后重启 DSH。装好后新会话可看到 10 个 `danbooru_*` 工具；之后改动只需 `plugin_manager` 关→开热重载。
-
 ## 自检
 
 ```bash
@@ -231,7 +252,7 @@ node verify.mjs
 
 ## 更新记录
 
-- **0.12.1**：仓库转为公开；README 与插件介绍标注「AI 制作」
+- **0.12.1**：仓库转为公开；README 与插件介绍标注「AI 制作」；安装章节拆分为「下载包 / git clone + link / 源码 zip」三种方案
 - **0.12.0**：过滤/降权 3D 渲染（`3d`/`photorealistic`/`faux_3d`）：相似度降权 0.05、以图搜画师按 `three_d_share` 扣分、例图与部位图优先排除 3D
 - **0.11.0**：以图搜画师新增 `lineart_tags`（线条）与 `lighting_tags`（光照）维度，且每个维度最多 4 个 tag 全部参与检索（之前只查前两个），线条/色彩/光照正式进入评分
 - **0.10.1**：以图搜画师默认不限年份（`year` 不填=全时间），修复输出里的非 JSON 值导致 `not lossless JSON` 的问题
