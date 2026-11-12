@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.9.0'
+const VERSION = '0.9.1'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -58,6 +58,11 @@ function parseYear(value) {
 /** Voice-actor tags share the artist category on Danbooru but are not illustrators. */
 const isIllustratorTag = (name) => !/_\(voice_actor\)$/.test(name)
 const splitTags = (value) => (typeof value === 'string' && value.trim() ? value.trim().split(/\s+/).filter(Boolean) : [])
+
+/** Video files (mp4/webm/...) are excluded everywhere; the plugin is image-only. */
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v'])
+const isVideoPost = (post) => Boolean(post) && VIDEO_EXTENSIONS.has(String(post.file_ext ?? '').toLowerCase())
+const onlyImages = (posts) => (Array.isArray(posts) ? posts.filter((post) => !isVideoPost(post)) : [])
 const categoryName = (id) => CATEGORY_NAMES[id] ?? String(id ?? 'unknown')
 const truncate = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text)
 const round = (value, digits = 3) => (typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(digits)) : null)
@@ -438,7 +443,8 @@ export function apply(ctx, rawConfig = {}) {
         if (rating !== 'all' && !/(^|\s)rating:/.test(tags)) tags = tags ? `${tags} rating:${rating}` : `rating:${rating}`
         const data = await request('/posts.json', { tags: tags || undefined, limit, page }, { signal: exec?.signal, ttlMs: TTL.posts })
         if (!Array.isArray(data)) throw new Error('Danbooru returned an unexpected /posts.json payload')
-        return { query: { tags, rating, limit, page, year: year ?? null, order }, count: data.length, posts: data.map(mapPost) }
+        const photos = onlyImages(data)
+        return { query: { tags, rating, limit, page, year: year ?? null, order }, count: photos.length, posts: photos.map(mapPost) }
       },
     },
     {
@@ -484,6 +490,7 @@ export function apply(ctx, rawConfig = {}) {
           let added = 0
           for (const post of Array.isArray(posts) ? posts : []) {
             if (!post || !post.id || seen.has(post.id)) continue
+            if (isVideoPost(post)) continue
             if (post.created_at && !String(post.created_at).startsWith(String(year))) continue
             if (rating !== 'all' && post.rating !== rating) continue
             if (userTags && !postMatchesTags(post, userTags)) continue
@@ -699,7 +706,7 @@ export function apply(ctx, rawConfig = {}) {
           const monthTag = `date:${year}-${String(month).padStart(2, '0')}-01..${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
           const tags = [userTags, monthTag, ratingTag, 'order:favcount'].filter(Boolean).join(' ')
           const posts = await request('/posts.json', { tags, limit: monthlySample }, { signal: exec?.signal, ttlMs: TTL.posts })
-          const rows = Array.isArray(posts) ? posts : []
+          const rows = onlyImages(posts)
           sample.push({ month, sampled: rows.length })
           for (const post of rows) {
             sampledPosts += 1
@@ -753,7 +760,7 @@ export function apply(ctx, rawConfig = {}) {
             try {
               const artistQuery = [artist.name, yearTag(year), ratingTag, 'order:favcount'].filter(Boolean).join(' ')
               const data = await request('/posts.json', { tags: artistQuery, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
-              checkedPosts = Array.isArray(data) ? data : []
+              checkedPosts = onlyImages(data)
             } catch {
               continue
             }
@@ -1128,7 +1135,7 @@ export function apply(ctx, rawConfig = {}) {
             try {
               const samplePosts = await request('/posts.json', { tags: `${candidate.name} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
               const rows = (Array.isArray(samplePosts) ? samplePosts : [])
-                .filter((post) => post.large_file_url || post.file_url)
+                .filter((post) => (post.large_file_url || post.file_url) && !isVideoPost(post))
                 .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
               const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
               const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
@@ -1216,7 +1223,7 @@ export function apply(ctx, rawConfig = {}) {
               // Anonymous accounts allow fewer tag tokens; retry without the order metatag.
               rows = await request('/posts.json', { tags: `${query} ${yearTag(year)}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
             }
-            const data = Array.isArray(rows) ? rows : []
+            const data = onlyImages(rows)
             if (data.length === 0) continue
             used = query
             posts = data
@@ -1254,7 +1261,7 @@ export function apply(ctx, rawConfig = {}) {
             try {
               const data = await request('/posts.json', { tags: `${candidate.name} ${yearTag(year)} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
               const rows = (Array.isArray(data) ? data : [])
-                .filter((post) => post.large_file_url || post.file_url)
+                .filter((post) => (post.large_file_url || post.file_url) && !isVideoPost(post))
                 .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
               const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
               const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))

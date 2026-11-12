@@ -98,11 +98,14 @@ check('get_post returns the same id', single.id === first.id, `${single.id} != $
 const yearPosts = await call('danbooru_search_posts', { tags: 'hatsune_miku', year: 2025, rating: 'all', order: 'score', limit: 3 })
 check('year filter scopes posts to the calendar year', yearPosts.count > 0 && yearPosts.posts.every((post) => post.created_at.startsWith('2025')), JSON.stringify(yearPosts.posts.map((post) => post.created_at)))
 check('score order is descending', yearPosts.posts.every((post, index, all) => index === 0 || all[index - 1].score >= post.score), JSON.stringify(yearPosts.posts.map((post) => post.score)))
+const VIDEO_EXTS = ['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v']
+check('search results are images only', [...posts.posts, ...yearPosts.posts].every((post) => !VIDEO_EXTS.includes(String(post.image?.file_ext ?? '').toLowerCase())), JSON.stringify([...posts.posts, ...yearPosts.posts].map((post) => post.image?.file_ext)))
 
 const topArtists = await call('danbooru_top_artists', { year: 2025, sample: 100, limit: 5 })
 check('top_artists ranks artists for the year', topArtists.artists.length > 0 && topArtists.sampled_posts > 0, JSON.stringify(topArtists).slice(0, 400))
 check('top_artists exposes weighted tiers', topArtists.weighting?.mode === 'weighted' && typeof topArtists.tiers?.rising?.sampled === 'number' && topArtists.tiers?.recent?.sampled > 0, JSON.stringify(topArtists.tiers).slice(0, 400))
 check('past-year hot tier is reported as skipped', /past year/.test(topArtists.tiers?.hot?.skipped ?? ''), JSON.stringify(topArtists.tiers?.hot).slice(0, 200))
+check('top_artists references are images only', topArtists.artists.every((artist) => !VIDEO_EXTS.includes(String(artist.example?.sample_url ?? '').toLowerCase().split('.').pop())), JSON.stringify(topArtists.artists.map((artist) => artist.example?.sample_url)))
 check('top_artists example is the newest sampled post', topArtists.artists.every((artist) => artist.name && artist.example?.post_id > 0 && artist.example.created_at && String(artist.example.created_at) >= String(artist.top?.created_at ?? '')), JSON.stringify(topArtists.artists.map((artist) => [artist.example?.created_at, artist.top?.created_at])).slice(0, 300))
 check('top_artists exposes a year-scoped artist page link', topArtists.artists.every((artist) => String(artist.artist_url).includes('2025-01-01')), JSON.stringify(topArtists.artists[0]?.artist_url))
 function priorityOrdered(artists) {
