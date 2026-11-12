@@ -6,6 +6,8 @@
 
 ## 安装（DSH profile）
 
+**下载包**：[Releases → v0.12.0 → `danbooru-tools-0.12.0.zip`](https://github.com/big-fat-fish-agent/danbooru-search-device/releases/latest)（解压后目录即可直接安装，GitHub 的 Code → Download ZIP 也等效）。
+
 1. 克隆本仓库到任意目录：`git clone https://github.com/big-fat-fish-agent/danbooru-search-device.git`
 2. 在 `$DSH_HOME/profiles/<profile>/package.json` 的 `dependencies` 里加：`"@local/dsh-danbooru-tools": "link:<克隆路径>"`
 3. 把 `"@local/dsh-danbooru-tools"` 加进同一文件的 `dsh.bundles` 列表
