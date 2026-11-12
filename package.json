@@ -1,0 +1,16 @@
+{
+  "name": "@local/dsh-danbooru-tools",
+  "version": "0.7.2",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Danbooru tools for DeepSeek Harness: post and tag search with year/rating/order filters, tag details, wiki excerpts and related tags, artist discovery ranked by a whole year's total favorites with a body-shape tag gate and year-scoped artist links, plus tag-profile similarity search for similar artists.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["index.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  }
+}

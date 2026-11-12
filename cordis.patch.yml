@@ -1,0 +1,4 @@
+- insert:
+    - id: danbooru-tools
+      name: '@local/dsh-danbooru-tools'
+      config: {}

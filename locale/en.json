@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Danbooru tools",
+    "description": "Read-only Danbooru tools: post and tag search (year, rating, Hot and score order), tag details with wiki excerpts, related tags, artist discovery ranked by a whole year's total favorites (default 5% body-shape tag gate that ignores pose/composition tags, with year-scoped artist page links and tagged reference posts), a Hot / favorite-growth / fallback weighted sampler, and tag-profile similarity search for similar artists. Saved credentials lift the tag limit. R18 is included by default; pass rating=g for general only."
+  }
+}
