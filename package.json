@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "type": "module",
-  "description": "Read-only Danbooru tools for DeepSeek Harness: post and tag search with year/rating/order filters, tag details, wiki excerpts and related tags, artist discovery ranked by a whole year's total favorites with a body-shape tag gate and year-scoped artist links, plus tag-profile similarity search for similar artists.",
+  "description": "Read-only Danbooru tools for DeepSeek Harness: post/tag search with year/rating/order filters, tag details, wiki excerpts, related tags, year-total-favorites artist ranking with a style tag gate, a Hot/rising weighted sampler, and tag-profile + expression-profile artist similarity with soft example selection.",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

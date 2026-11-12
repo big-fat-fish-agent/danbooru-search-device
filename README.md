@@ -100,7 +100,9 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 5. 最终分数：`(1 - expression_weight) × 风格分 + expression_weight × 表情余弦分`；表情余弦对表情 tag 频率做**稀有度加权**（`expression_weight` 默认 0.5）
 
 - 成本：1 次（种子画像）+ `profile_tags` 次 + `expression_tags` 次 + 最多 `2 × limit` 次（表情余弦/风格重叠检查），默认约 1 + 6 + 4 + 20 = 31 次请求
-- 局限：tag 层面的表情相似（用哪些表情、多常用）仍不等于「表情画法」相似（眼型、嘴形、腮红画法）；`examples>0` 返回样图 URL，必须 `read_image` 目视后才能下结论
+- **例图软规则**：`examples>0` 时默认优先「带需求 tag（表情/体型）+ 能看到脸」的作品；只有用户明确要求背影、剪影、下半身特写等无脸构图时才传 `allow_no_face=true`；`example_tags` 可覆盖需求 tag，每条例图带 `matched_tags` 便于核对；没有可用样图的帖子会被跳过
+- **题材降权**：相似度计算里 `furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 的权重乘 **0.05**，避免兽向题材拉动画师相似度
+- 局限：tag 层面的表情相似（用哪些表情、多常用）仍不等于「表情画法」相似（眼型、嘴形、腮红画法）；必须 `read_image` 目视后才能下结论
 - 用法：`danbooru_similar_artists(artist="satou_kuuki", limit=10, examples=3)`
 
 ## 输出约定（画师 vs 图片）
@@ -125,7 +127,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.2 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.3 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -155,17 +157,9 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 改 `config` 需要改本目录的 `cordis.patch.yml` 并重装 bundle；改环境变量则重启 DSH 即可。
 
-## 安装 / 卸载
+## 卸载
 
-在本机 DSH profile（这里叫 `desktop`）里：
-
-```bash
-dsh plugin add --profile desktop <本目录绝对路径>
-```
-
-或对 Agent 说：用 `plugin_manager` 以 `action: install_bundle` 安装这个目录。卸载：`plugin_manager` 的 `remove_bundle`，或 `dsh plugin remove --profile desktop @local/dsh-danbooru-tools`。
-
-装好后重启 DSH，新会话即可看到 5 个 `danbooru_*` 工具（本会话不会热加载新工具）。
+`plugin_manager` 的 `remove_bundle`，或从 profile 的 `package.json` 里移除 `@local/dsh-danbooru-tools` 依赖与 `dsh.bundles` 条目后重启 DSH。装好后新会话可看到 10 个 `danbooru_*` 工具；之后改动只需 `plugin_manager` 关→开热重载。
 
 ## 自检
 
@@ -173,7 +167,7 @@ dsh plugin add --profile desktop <本目录绝对路径>
 node verify.mjs
 ```
 
-会真实请求各查询工具（含年份过滤、三级加权、整年总收藏、风格占比、凭据降级）并校验返回结构与排序（约 65 秒，受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、表情画像与余弦、例图软规则等 39 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -190,3 +184,12 @@ node verify.mjs
 - 插件没有「批量下载图片」的工具；下载发生在 Agent 的 shell 侧，属于会话临时操作，不是插件能力。
 - 内容分级**默认返回全部（含 R18）**；需要全年龄内容时显式传 `rating="g"`，结果可能不适合所有场景。
 - wiki 摘要是截断后的纯文本，保留了 Danbooru 的 wiki 标记（如 `[[tag]]`），不是渲染后的富文本。
+
+## 更新记录
+
+- **0.8.3**：清理过时文档（重复的安装章节、旧的自检耗时、工具数量），DSH 内与仓库说明同步为当前能力（表情画像/余弦、例图软规则、furry 降权）
+- **0.8.2**：例图改为软规则（默认优先带脸，`allow_no_face=true` 放行无脸构图）；`furry` 类 tag 相似度权重 ×0.05；过滤无 `sample_url` 的例图
+- **0.8.1**：例图强制匹配需求 tag 并跳过隐藏脸的构图（已由 0.8.2 改为软规则）
+- **0.8.0**：相似画师新增表情画像、表情 tag 扩展、稀有度加权表情余弦与风格重叠检查
+- **0.7.2**：例图按需附带样图 URL（`examples`）
+- **0.7.0**：新增 `danbooru_similar_artists`（tag 画像相似画师）
