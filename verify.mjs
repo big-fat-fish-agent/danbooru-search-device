@@ -81,11 +81,13 @@ const imageArtists = await call('danbooru_artists_from_image', {
   person_tags: 'huge_breasts, thick_thighs',
   expression_tags: 'half-closed_eyes, blush',
   technique_tags: 'latex, shiny_clothes',
+  lineart_tags: 'lineart, colored_lineart',
   color_tags: 'white_background, blue_theme',
+  lighting_tags: 'dappled_sunlight, backlighting',
   year: 2025,
   limit: 5,
 })
-check('image artist search ranks by weighted dimensions', imageArtists.candidates.length > 0 && imageArtists.candidates.every((candidate, index, all) => index === 0 || all[index - 1].score >= candidate.score) && imageArtists.candidates.every((candidate) => candidate.dimensions && typeof candidate.score === 'number' && String(candidate.artist_url).includes('date%3A2025')), JSON.stringify(imageArtists.candidates.map((candidate) => [candidate.name, candidate.score])).slice(0, 300))
+check('image artist search ranks by weighted dimensions', imageArtists.candidates.length > 0 && imageArtists.candidates.every((candidate, index, all) => index === 0 || all[index - 1].score >= candidate.score) && imageArtists.candidates.every((candidate) => candidate.dimensions && typeof candidate.score === 'number' && String(candidate.artist_url).includes('date%3A2025')) && imageArtists.groups.some((group) => group.key === 'lineart') && imageArtists.groups.some((group) => group.key === 'lighting'), JSON.stringify(imageArtists.candidates.map((candidate) => [candidate.name, candidate.score])).slice(0, 300))
 
 const posts = await call('danbooru_search_posts', { tags: 'hatsune_miku solo', limit: 3 })
 check('search_posts returns posts', posts.count > 0, JSON.stringify(posts).slice(0, 300))

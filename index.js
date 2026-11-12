@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.10.1'
+const VERSION = '0.11.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1207,13 +1207,15 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Each group becomes one year-scoped post search and the tool ranks artists by layered priority. mode="person" (default): person/character style 0.4 > expression style 0.25 > rendering technique 0.2 > color palette 0.1 > general tags 0.05. mode="style": rendering technique 0.4 > color palette 0.25 > person style 0.2 > expression 0.1 > tags 0.05. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.30 > expression style 0.18 > rendering technique 0.20 > lineart 0.12 > color palette 0.08 > lighting 0.07 > general tags 0.05. mode="style": rendering technique 0.26 > lineart 0.18 > color palette 0.18 > lighting 0.14 > person style 0.14 > expression 0.05 > tags 0.05. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
         expression_tags: { type: 'string', description: 'Tags for the facial expression, e.g. "half-closed_eyes, blush, closed_mouth".' },
         technique_tags: { type: 'string', description: 'Tags for rendering technique/material, e.g. "latex, shiny_clothes, shiny_skin".' },
-        color_tags: { type: 'string', description: 'Tags for palette/color style, e.g. "white_background, blue_theme, colorful".' },
+        lineart_tags: { type: 'string', description: 'Tags for line quality, e.g. "lineart, colored_lineart, thick_lineart, no_lineart, gradient_lineart".' },
+        color_tags: { type: 'string', description: 'Tags for palette/color style, e.g. "colorful, iridescent, blue_theme, gradient, colorful_background".' },
+        lighting_tags: { type: 'string', description: 'Tags for light/shadow handling, e.g. "dappled_sunlight, backlighting, lens_flare, chromatic_aberration, sunlight".' },
         mode: { type: 'string', enum: ['person', 'style'], description: 'Priority mode: person (default) ranks character/expression style first; style ranks rendering technique and color palette first.' },
         year: { type: 'integer', minimum: MIN_YEAR, description: 'Optional calendar year to search (default: all time).' },
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
@@ -1227,8 +1229,8 @@ export function apply(ctx, rawConfig = {}) {
         if (imageTags.length === 0) throw new Error('image_tags is required')
         const mode = args?.mode === 'style' ? 'style' : 'person'
         const weights = mode === 'style'
-          ? { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 }
-          : { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 }
+          ? { technique: 0.26, lineart: 0.18, color: 0.18, lighting: 0.14, person: 0.14, expression: 0.05, tag: 0.05 }
+          : { person: 0.3, expression: 0.18, technique: 0.2, lineart: 0.12, color: 0.08, lighting: 0.07, tag: 0.05 }
         const year = parseYear(args?.year)
         const yearFilter = year ? ` ${yearTag(year)}` : ''
         const limit = clamp(args?.limit, 1, 25, 10)
@@ -1238,7 +1240,9 @@ export function apply(ctx, rawConfig = {}) {
           { key: 'person', tags: parseTagList(args?.person_tags) },
           { key: 'expression', tags: parseTagList(args?.expression_tags) },
           { key: 'technique', tags: parseTagList(args?.technique_tags) },
+          { key: 'lineart', tags: parseTagList(args?.lineart_tags) },
           { key: 'color', tags: parseTagList(args?.color_tags) },
+          { key: 'lighting', tags: parseTagList(args?.lighting_tags) },
           { key: 'tag', tags: imageTags },
         ].filter((group) => group.tags.length > 0)
         const totalWeight = groups.reduce((sum, group) => sum + (weights[group.key] ?? 0), 0) || 1
@@ -1246,36 +1250,33 @@ export function apply(ctx, rawConfig = {}) {
         const standing = new Map()
         const groupStats = []
         for (const group of groups) {
-          const queries = []
-          if (group.tags.length >= 2) queries.push(`${group.tags[0]} ${group.tags[1]}`)
-          queries.push(group.tags[0])
-          let used = null
-          let posts = []
-          for (const query of [...new Set(queries)]) {
+          const tagQueries = group.tags.slice(0, 4)
+          const perTagWeight = ((weights[group.key] ?? 0) / totalWeight) / tagQueries.length
+          const seenInGroup = new Set()
+          const tagStats = []
+          for (const tag of tagQueries) {
             let rows
             try {
-              rows = await request('/posts.json', { tags: `${query}${yearFilter} order:score`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+              rows = await request('/posts.json', { tags: `${tag}${yearFilter} order:score`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
             } catch {
               // Anonymous accounts allow fewer tag tokens; retry without the order metatag.
-              rows = await request('/posts.json', { tags: `${query}${yearFilter}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+              rows = await request('/posts.json', { tags: `${tag}${yearFilter}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
             }
             const data = onlyImages(rows)
-            if (data.length === 0) continue
-            used = query
-            posts = data
-            break
-          }
-          const weight = (weights[group.key] ?? 0) / totalWeight
-          for (const post of posts) {
-            for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
-              const entry = standing.get(name) ?? { name, score: 0, posts: 0, dimensions: {} }
-              entry.score += weight / posts.length
-              entry.posts += 1
-              entry.dimensions[group.key] = (entry.dimensions[group.key] ?? 0) + 1
-              standing.set(name, entry)
+            tagStats.push({ tag, posts: data.length })
+            for (const post of data) {
+              if (seenInGroup.has(post.id)) continue
+              seenInGroup.add(post.id)
+              for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
+                const entry = standing.get(name) ?? { name, score: 0, posts: 0, dimensions: {} }
+                entry.score += perTagWeight / data.length
+                entry.posts += 1
+                entry.dimensions[group.key] = (entry.dimensions[group.key] ?? 0) + 1
+                standing.set(name, entry)
+              }
             }
           }
-          groupStats.push({ key: group.key, query: used, posts: posts.length })
+          groupStats.push({ key: group.key, tags: tagStats })
         }
 
         const candidates = [...standing.values()]

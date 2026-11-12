@@ -22,7 +22,7 @@
 | `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
-| `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）聚合该年画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`color_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
+| `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
@@ -113,19 +113,21 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 | 维度 | 说明 | `mode="person"` 权重 | `mode="style"` 权重 |
 |---|---|---|---|
-| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.40 | 0.20 |
-| `expression` 表情 | 表情 tag | 0.25 | 0.10 |
-| `technique` 绘制手法 | 材质/上色/线条（`latex`、`shiny_clothes`…） | 0.20 | 0.40 |
-| `color` 色彩 | 背景/主色/饱和度 | 0.10 | 0.25 |
+| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.30 | 0.14 |
+| `expression` 表情 | 表情 tag | 0.18 | 0.05 |
+| `technique` 绘制手法 | 材质/上色（`latex`、`shiny_clothes`…） | 0.20 | 0.26 |
+| `lineart` 线条 | 线稿粗细/有无/彩色线（`lineart`、`colored_lineart`…） | 0.12 | 0.18 |
+| `color` 色彩 | 主色/饱和度/多彩/虹彩（`colorful`、`iridescent`…） | 0.08 | 0.18 |
+| `lighting` 光照 | 逆光/斑驳光/镜头光（`dappled_sunlight`、`backlighting`…） | 0.07 | 0.14 |
 | `tag` 泛 tag | 其余描述 tag | 0.05 | 0.05 |
 
-- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 色彩 → 人物 → 表情 → tag
-- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 → 表情 → 绘制手法 → 色彩 → tag
-- 每个维度取前两个 tag 做一次「该年 + `order:score`」检索（100 条），按画师出现频率加权累加；空结果自动回退到单 tag 检索
+- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 色彩 → 光照 → 人物 → 表情 → tag
+- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 → 表情 → 绘制手法 → 线条 → 色彩 → 光照 → tag
+- 每个维度**最多取 4 个 tag，逐个 tag 单独检索**（各 100 条，`order:score`）；同一维度内按帖子去重，再按画师出现频率加权累加
 - `year` 可选：**不填默认全时间**（不限年份），填了才按该年过滤
-- 成本：约 5–10 次请求（维度数 × 1–2 次）+ `examples` 次
+- 成本：约 5–20 次请求（各组 tag 数之和，最多 4×7）+ `examples` 次
 - 用法：
-  `danbooru_artists_from_image(image_tags="latex bodysuit, leopard_print", person_tags="huge_breasts, thick_thighs", expression_tags="closed_mouth, half-closed_eyes", technique_tags="latex, shiny_clothes", color_tags="white_background, blue_theme", year=2025, limit=10, examples=3)`
+  `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
 - 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
 
 ## 部位特化搜索（画手 / 画脚 / 画腿…）
@@ -163,7 +165,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.10.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.11.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -224,6 +226,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.11.0**：以图搜画师新增 `lineart_tags`（线条）与 `lighting_tags`（光照）维度，且每个维度最多 4 个 tag 全部参与检索（之前只查前两个），线条/色彩/光照正式进入评分
 - **0.10.1**：以图搜画师默认不限年份（`year` 不填=全时间），修复输出里的非 JSON 值导致 `not lossless JSON` 的问题
 - **0.10.0**：新增 `danbooru_part_specialists`（部位特化：按部位焦点 tag 的高收藏作品聚合画师排名 + 部位高收藏图片）
 - **0.9.1**：全工具只返回图片（过滤 `mp4`/`webm` 等视频；搜索、画师参考图、例图均跳过视频）
