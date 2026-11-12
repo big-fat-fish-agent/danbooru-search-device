@@ -21,7 +21,7 @@
 | `danbooru_search_tags` | tag 自动补全：规范名、分类、作品数 | `query`、`category`、`limit` |
 | `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
-| `danbooru_similar_artists` | **相似画师（tag 画像）**：由种子画师的「特色 tag」找出共享这些 tag 的画师并按稀有度加权排序 | `artist`(必填)、`limit`、`profile_tags`、`min_shared` |
+| `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
 | `danbooru_save_credentials` | 把登录名与 API key 存进 Harness 凭据库（私有文件） | `login`、`apiKey`、`clear` |
@@ -89,16 +89,18 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - 返回里每位画师带 `style: { tags, match, threshold, min_hits, checked_posts, hit_posts, ratio, pose_posts, best }`；`best` = 该画师**带风格 tag 的**最高收藏作品（最多 3 张），可直接点开参考（"优先看带 tag 的图"）；顶层 `style_filter` 说明核验几人、通过几人
 - 成本：基础每月 1 次请求 + 每核验 1 人 1 次请求（默认最多 40 次）
 
-## 相似画师（tag 画像）
+## 相似画师（tag 画像 + 表情画像）
 
 `danbooru_similar_artists` 用 Danbooru 的 tag 共现数据找「风格相近」的画师（**不是图像 embedding**）：
 
 1. 取种子画师的 `related_tag`，筛出「对 TA 高频、但全站不算通用」的 general tag（排除 `1girl`、`highres`、背景色等结构性 tag），作为风格画像（`profile_tags`，默认取 6 个）
-2. 对每个画像 tag 查 `related_tag&category=artist`，收集共享该 tag 的画师，按 `频率 × tag 稀有度` 加权累加
-3. 只保留共享 ≥ `min_shared`（默认 2）个画像 tag 的画师，按分数排序输出
+2. **表情画像**：从种子画师的 tag 画像里挑出表情 tag（`smile`、`blush`、`open_mouth`、`half-closed_eyes`、`tongue_out` 等，`expression_tags` 默认 4 个），用它们把「表情习惯相近」的画师也拉进候选池
+3. 对每个画像 tag 查 `related_tag&category=artist`，收集共享该 tag 的画师，按 `频率 × tag 稀有度` 加权累加
+4. 候选 = 风格画像候选 ∪ 表情画像候选；表情候选必须通过「风格 tag 重叠检查」（同一批 `related_tag` 里能查到种子风格 tag），避免只表情像、画风完全不像
+5. 最终分数：`(1 - expression_weight) × 风格分 + expression_weight × 表情余弦分`；表情余弦对表情 tag 频率做**稀有度加权**（`expression_weight` 默认 0.5）
 
-- 成本：1 次（种子画像）+ `profile_tags` 次（每个 tag 一次），默认 7 次请求；再加 `examples` 次（每个候选附样图，`examples=3` 时 3 次/人）
-- 局限：这是 tag 层面的风格/题材相似，**不是真正的视觉相似**；`examples>0` 时返回候选的样图 URL，必须用 `read_image` 目视比对后才算完成「画风相近」判断。
+- 成本：1 次（种子画像）+ `profile_tags` 次 + `expression_tags` 次 + 最多 `2 × limit` 次（表情余弦/风格重叠检查），默认约 1 + 6 + 4 + 20 = 31 次请求
+- 局限：tag 层面的表情相似（用哪些表情、多常用）仍不等于「表情画法」相似（眼型、嘴形、腮红画法）；`examples>0` 返回样图 URL，必须 `read_image` 目视后才能下结论
 - 用法：`danbooru_similar_artists(artist="satou_kuuki", limit=10, examples=3)`
 
 ## 输出约定（画师 vs 图片）
@@ -108,7 +110,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - **画风相似判定维度**（目视，不只看 tag）：
   1. **渲染**：上色/软硬阴影、高光与材质（乳胶、亮面布料）、饱和度与色调
   2. **体态**：胸腰臀/腿比例、肉感与脂肪分布、身高体型、常用姿态
-  3. **面部特征**：脸型、眼型/眼距/瞳孔高光、鼻嘴画法、腮红
+  3. **面部特征与表情**：脸型、眼型/眼距/瞳孔高光、鼻嘴画法、腮红、常用表情（笑/半闭眼/吐舌/害羞等）
   4. **构图**：立绘/多视图/近景裁切等
 
 ## 凭据（登录后解除 2-tag 限制）
@@ -121,7 +123,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.7.2 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。

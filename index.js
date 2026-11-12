@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.7.2'
+const VERSION = '0.8.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -99,6 +99,15 @@ const SIMILARITY_STOPLIST = new Set([
   'blue_background', 'black_background', 'pink_background', 'grey_background', 'yellow_background',
 ])
 const SIMILARITY_TOTAL_POSTS = 8_600_000
+
+/** Expression tags used to build a facial-expression profile and compare candidates with the seed. */
+const EXPRESSION_TAGS = new Set([
+  'smile', 'light_smile', 'open_mouth', 'closed_mouth', 'parted_lips', 'grin', 'smug',
+  'seductive_smile', 'naughty_face', 'blush', 'half-closed_eyes', 'closed_eyes', 'one_eye_closed',
+  'tears', 'crying', 'sweatdrop', 'heavy_breathing', 'tongue_out', 'licking_lips', 'saliva',
+  'ahegao', 'rolling_eyes', 'heart-shaped_pupils', 'expressionless', 'pout', 'embarrassed',
+  'flustered', 'nervous', 'aroused', 'moaning', 'furrowed_brow', 'raised_eyebrows', 'spoken_heart',
+])
 
 const clampFloat = (value, min, max, fallback) => {
   const number = Number(value)
@@ -911,13 +920,15 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_similar_artists',
-      description: 'Find artists whose tag profile resembles a seed artist, using Danbooru co-occurrence data (no image embedding). It builds the seed artist\'s characteristic tags (frequent for them, but not universal site-wide), then collects artists who share those tags and scores them by frequency and tag rarity. Pass examples>0 to attach each candidate\'s sample post URLs so the caller can read_image and visually confirm; tag similarity is only a candidate generator, not proof of visual style. When the final deliverable is an artist list, attach examples=3 and keep three sample images per artist; when it is a post list, keep one sample per post. Judge style similarity on rendering (shading, highlights, palette), body build/pose (proportions, fleshiness, height) and face features (face shape, eyes, nose, mouth, blush), not on tags alone.',
+      description: 'Find artists whose tag profile and facial-expression profile resemble a seed artist, using Danbooru co-occurrence data (no image embedding). It builds the seed artist\'s characteristic tags (frequent for them, but not universal site-wide) plus an expression-tag profile (smile, blush, half-closed_eyes, ...), then collects artists who share those tags and scores them by frequency and tag rarity, finally re-ranking by the cosine similarity between the seed\'s and each finalist\'s expression-tag frequency profiles. Pass examples>0 to attach each candidate\'s sample post URLs so the caller can read_image and visually confirm; tag/expression similarity is only a candidate generator, not proof of visual style. When the final deliverable is an artist list, attach examples=3 and keep three sample images per artist; when it is a post list, keep one sample per post. Judge style similarity on rendering (shading, highlights, palette), body build/pose (proportions, fleshiness, height), face features (face shape, eyes, nose, mouth, blush) and expressions, not on tags alone.',
       parameters: parameters({
         artist: { type: 'string', description: 'Seed artist tag, e.g. "satou_kuuki". Use danbooru_search_tags if unsure of the canonical name.' },
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
         profile_tags: { type: 'integer', minimum: 3, maximum: 10, description: 'Seed style tags used as the similarity profile (default 6).' },
         min_shared: { type: 'integer', minimum: 1, maximum: 10, description: 'Minimum shared style tags for a candidate (default 2).' },
         examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate for visual confirmation (default 0 = none; each costs one request).' },
+        expression_tags: { type: 'integer', minimum: 0, maximum: 6, description: 'Seed expression tags used to build the expression profile and expand candidates (default 4; 0 disables expression matching).' },
+        expression_weight: { type: 'number', minimum: 0, maximum: 1, description: 'Weight of expression similarity in the final score (default 0.5).' },
       }, ['artist']),
       output,
       async execute(args, exec) {
@@ -927,6 +938,8 @@ export function apply(ctx, rawConfig = {}) {
         const profileTagCount = clamp(args?.profile_tags, 3, 10, 6)
         const minShared = clamp(args?.min_shared, 1, 10, 2)
         const exampleCount = clamp(args?.examples, 0, 3, 0)
+        const expressionTagCount = clamp(args?.expression_tags, 0, 6, 4)
+        const expressionWeight = clampFloat(args?.expression_weight, 0, 1, 0.5)
 
         const seed = await request('/related_tag.json', { query: artist, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.related })
         const seedRows = Array.isArray(seed?.related_tags) ? seed.related_tags : []
@@ -959,17 +972,119 @@ export function apply(ctx, rawConfig = {}) {
           }
         }
 
-        const candidates = [...scored.values()]
-          .filter((entry) => entry.shared.length >= minShared)
-          .sort((left, right) => right.score - left.score || right.post_count - left.post_count || left.name.localeCompare(right.name))
-          .slice(0, limit)
-          .map((entry) => ({
+        const seedExpression = new Map()
+        for (const row of seedRows) {
+          if (row?.tag?.name && EXPRESSION_TAGS.has(row.tag.name)) {
+            const frequency = Number(row.frequency ?? 0)
+            if (frequency > 0) seedExpression.set(row.tag.name, { frequency, post_count: row.tag.post_count ?? 0 })
+          }
+        }
+        const expressionProfile = [...seedExpression.entries()]
+          .sort((left, right) => right[1].frequency - left[1].frequency)
+          .slice(0, expressionTagCount)
+        const expressionRarity = (postCount) => 1 + Math.log10(SIMILARITY_TOTAL_POSTS / Math.max(1000, postCount ?? 0))
+        const seedExpressionVector = new Map()
+        for (const [tag, info] of seedExpression) seedExpressionVector.set(tag, info.frequency * expressionRarity(info.post_count))
+
+        // Expression expansion: artists who share the seed's expression habits.
+        const expressionScored = new Map()
+        for (const [tagName] of expressionProfile) {
+          try {
+            const cooccurring = await request('/related_tag.json', { query: tagName, category: CATEGORY_IDS.artist, limit: 25 }, { signal: exec?.signal, ttlMs: TTL.related })
+            const rows = Array.isArray(cooccurring?.related_tags) ? cooccurring.related_tags : []
+            const weight = 1 + Math.log10(SIMILARITY_TOTAL_POSTS / Math.max(1000, cooccurring?.post_count ?? 1000))
+            for (const entry of rows) {
+              const name = String(entry?.tag?.name ?? '')
+              if (!name || name === artist) continue
+              if ((entry.tag.post_count ?? 0) < 20) continue
+              const current = expressionScored.get(name) ?? { expScore: 0, expTags: [] }
+              current.expScore += weight * Number(entry.frequency ?? 0)
+              if (!current.expTags.includes(tagName)) current.expTags.push(tagName)
+              expressionScored.set(name, current)
+            }
+          } catch {
+            // expression expansion is best-effort; keep the tag-profile candidates otherwise
+          }
+        }
+
+        const pool = new Map()
+        for (const [name, entry] of scored) {
+          pool.set(name, { name, baseScore: entry.score, shared: entry.shared, post_count: entry.post_count, expScore: 0, expTags: [] })
+        }
+        for (const [name, entry] of expressionScored) {
+          const current = pool.get(name) ?? { name, baseScore: 0, shared: [], post_count: 0, expScore: 0, expTags: [] }
+          current.expScore = entry.expScore
+          current.expTags = entry.expTags
+          pool.set(name, current)
+        }
+
+        const poolCandidates = [...pool.values()].filter((entry) => entry.shared.length >= minShared || entry.expTags.length >= minShared)
+        const maxBase = poolCandidates.reduce((max, entry) => Math.max(max, entry.baseScore), 0) || 1
+        const maxExp = poolCandidates.reduce((max, entry) => Math.max(max, entry.expScore), 0) || 1
+        const preRanked = poolCandidates
+          .map((entry) => ({ ...entry, preScore: 0.6 * (entry.baseScore / maxBase) + 0.4 * (entry.expScore / maxExp) }))
+          .sort((left, right) => right.preScore - left.preScore || right.post_count - left.post_count || left.name.localeCompare(right.name))
+          .slice(0, limit * 2)
+
+        // Expression cosine: rarity-weighted expression-tag profile similarity, plus a style-overlap
+        // check on the same related_tag fetch so expression-only candidates still need shared style tags.
+        const expressionCosine = async (name) => {
+          try {
+            const data = await request('/related_tag.json', { query: name, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.related })
+            const rows = Array.isArray(data?.related_tags) ? data.related_tags : []
+            const byTag = new Map()
+            const candidateVector = new Map()
+            for (const row of rows) {
+              if (!row?.tag?.name) continue
+              byTag.set(row.tag.name, row)
+              if (EXPRESSION_TAGS.has(row.tag.name)) {
+                candidateVector.set(row.tag.name, Number(row.frequency ?? 0) * expressionRarity(row.tag.post_count))
+              }
+            }
+            let dot = 0
+            let seedNorm = 0
+            let candidateNorm = 0
+            for (const [tag, value] of seedExpressionVector) {
+              seedNorm += value * value
+              const other = candidateVector.get(tag)
+              if (other) dot += value * other
+            }
+            for (const [, value] of candidateVector) candidateNorm += value * value
+            const denominator = Math.sqrt(seedNorm) * Math.sqrt(candidateNorm)
+            const styleShared = profile.filter((row) => byTag.has(row.name)).map((row) => row.name)
+            return {
+              score: denominator > 0 ? dot / denominator : 0,
+              tags: [...candidateVector.keys()],
+              styleShared,
+              styleScore: profile.length > 0 ? styleShared.length / profile.length : 0,
+            }
+          } catch {
+            return { score: 0, tags: [], styleShared: [], styleScore: 0 }
+          }
+        }
+
+        const candidates = []
+        for (const entry of preRanked) {
+          const cosine = expressionTagCount > 0 && expressionWeight > 0 ? await expressionCosine(entry.name) : null
+          const sharedCount = cosine ? Math.max(entry.shared.length, cosine.styleShared.length) : entry.shared.length
+          if (sharedCount < minShared && (!cosine || entry.expTags.length < minShared)) continue
+          const baseNorm = cosine ? Math.max(entry.baseScore / maxBase, cosine.styleScore) : entry.baseScore / maxBase
+          const cosScore = cosine ? Math.max(0, Math.min(1, cosine.score)) : 0
+          const combined = cosine ? (1 - expressionWeight) * baseNorm + expressionWeight * cosScore : baseNorm
+          candidates.push({
             name: entry.name,
             artist_url: artistPostsUrl(entry.name),
-            score: round(entry.score * 100, 1),
-            shared_tags: entry.shared,
+            score: round(combined * 100, 1),
+            tag_score: round(baseNorm * 100, 1),
+            shared_tags: entry.shared.length > 0 ? entry.shared : cosine ? cosine.styleShared : [],
             post_count: entry.post_count,
-          }))
+            ...(cosine
+              ? { expression: { cosine: round(cosScore, 3), tags: cosine.tags.length > 0 ? cosine.tags : entry.expTags } }
+              : {}),
+          })
+        }
+        candidates.sort((left, right) => right.score - left.score || right.post_count - left.post_count || left.name.localeCompare(right.name))
+        candidates.splice(limit)
 
         // Visual confirmation is left to the caller: attach sample URLs so the agent can read_image them.
         if (exampleCount > 0) {
@@ -995,10 +1110,11 @@ export function apply(ctx, rawConfig = {}) {
             artist_url: artistPostsUrl(artist),
             tag_count: seed?.post_count ?? 0,
             profile: profile.map((row) => ({ tag: row.name, frequency: round(row.frequency, 2), post_count: row.post_count })),
+            expression_profile: expressionProfile.map(([tag, info]) => ({ tag, frequency: round(info.frequency, 2), post_count: info.post_count })),
           },
-          method: 'tag-profile similarity (co-occurrence)',
+          method: 'tag-profile similarity (co-occurrence) + expression cosine',
           candidates,
-          note: 'Similarity is measured on shared Danbooru tags: seed profile = the artist\'s frequent non-universal tags; candidates = artists sharing at least min_shared of them, weighted by tag rarity. This is a heuristic, not visual embedding similarity. Confirm candidates visually on rendering (shading, highlights, palette), body build/pose and face features; for an artist-list deliverable keep three sample images per artist, for a post list keep one sample per post.',
+          note: 'Candidate generation uses shared Danbooru tags (frequent, non-universal seed tags), and expression similarity is measured separately: the seed\'s expression tags (smile, blush, half-closed_eyes, ...) are expanded to artists sharing them, then each finalist\'s expression-tag frequency profile is compared with the seed by cosine and folded into score (expression_weight, default 0.5). This is a heuristic, not visual embedding similarity. Confirm candidates visually on rendering (shading, highlights, palette), body build/pose, face features and expressions; for an artist-list deliverable keep three sample images per artist, for a post list keep one sample per post.',
         }
       },
     },
