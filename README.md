@@ -122,6 +122,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 色彩 → 人物 → 表情 → tag
 - **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 → 表情 → 绘制手法 → 色彩 → tag
 - 每个维度取前两个 tag 做一次「该年 + `order:score`」检索（100 条），按画师出现频率加权累加；空结果自动回退到单 tag 检索
+- `year` 可选：**不填默认全时间**（不限年份），填了才按该年过滤
 - 成本：约 5–10 次请求（维度数 × 1–2 次）+ `examples` 次
 - 用法：
   `danbooru_artists_from_image(image_tags="latex bodysuit, leopard_print", person_tags="huge_breasts, thick_thighs", expression_tags="closed_mouth, half-closed_eyes", technique_tags="latex, shiny_clothes", color_tags="white_background, blue_theme", year=2025, limit=10, examples=3)`
@@ -162,7 +163,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.10.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.10.1 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -223,6 +224,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.10.1**：以图搜画师默认不限年份（`year` 不填=全时间），修复输出里的非 JSON 值导致 `not lossless JSON` 的问题
 - **0.10.0**：新增 `danbooru_part_specialists`（部位特化：按部位焦点 tag 的高收藏作品聚合画师排名 + 部位高收藏图片）
 - **0.9.1**：全工具只返回图片（过滤 `mp4`/`webm` 等视频；搜索、画师参考图、例图均跳过视频）
 - **0.9.0**：新增 `danbooru_artists_from_image`（以图搜画师，分层优先级：人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）

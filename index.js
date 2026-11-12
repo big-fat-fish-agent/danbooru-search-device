@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.10.0'
+const VERSION = '0.10.1'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -77,6 +77,9 @@ const onlyImages = (posts) => (Array.isArray(posts) ? posts.filter((post) => !is
 const categoryName = (id) => CATEGORY_NAMES[id] ?? String(id ?? 'unknown')
 const truncate = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text)
 const round = (value, digits = 3) => (typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(digits)) : null)
+
+/** Drop undefined values (and NaN/Infinity) so a tool result always round-trips through JSON. */
+const toLossless = (value) => JSON.parse(JSON.stringify(value))
 
 /** Local calendar day as YYYY-MM-DD; the Popular page takes it as a week/month anchor. */
 const isoDay = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -1212,7 +1215,7 @@ export function apply(ctx, rawConfig = {}) {
         technique_tags: { type: 'string', description: 'Tags for rendering technique/material, e.g. "latex, shiny_clothes, shiny_skin".' },
         color_tags: { type: 'string', description: 'Tags for palette/color style, e.g. "white_background, blue_theme, colorful".' },
         mode: { type: 'string', enum: ['person', 'style'], description: 'Priority mode: person (default) ranks character/expression style first; style ranks rendering technique and color palette first.' },
-        year: { type: 'integer', minimum: MIN_YEAR, description: 'Calendar year to search (default: current year).' },
+        year: { type: 'integer', minimum: MIN_YEAR, description: 'Optional calendar year to search (default: all time).' },
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
         examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate (default 0; each costs one request).' },
         example_tags: { type: 'string', description: 'Comma-separated tags examples should carry (default: expression_tags, else image_tags).' },
@@ -1226,7 +1229,8 @@ export function apply(ctx, rawConfig = {}) {
         const weights = mode === 'style'
           ? { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 }
           : { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 }
-        const year = parseYear(args?.year) ?? latestYear()
+        const year = parseYear(args?.year)
+        const yearFilter = year ? ` ${yearTag(year)}` : ''
         const limit = clamp(args?.limit, 1, 25, 10)
         const exampleCount = clamp(args?.examples, 0, 3, 0)
 
@@ -1250,10 +1254,10 @@ export function apply(ctx, rawConfig = {}) {
           for (const query of [...new Set(queries)]) {
             let rows
             try {
-              rows = await request('/posts.json', { tags: `${query} ${yearTag(year)} order:score`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+              rows = await request('/posts.json', { tags: `${query}${yearFilter} order:score`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
             } catch {
               // Anonymous accounts allow fewer tag tokens; retry without the order metatag.
-              rows = await request('/posts.json', { tags: `${query} ${yearTag(year)}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
+              rows = await request('/posts.json', { tags: `${query}${yearFilter}`, limit: 100 }, { signal: exec?.signal, ttlMs: TTL.posts })
             }
             const data = onlyImages(rows)
             if (data.length === 0) continue
@@ -1291,7 +1295,7 @@ export function apply(ctx, rawConfig = {}) {
           const allowNoFace = args?.allow_no_face === true
           for (const candidate of candidates) {
             try {
-              const data = await request('/posts.json', { tags: `${candidate.name} ${yearTag(year)} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
+              const data = await request('/posts.json', { tags: `${candidate.name}${yearFilter} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
               const rows = (Array.isArray(data) ? data : [])
                 .filter((post) => (post.large_file_url || post.file_url) && !isVideoPost(post))
                 .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
@@ -1314,15 +1318,15 @@ export function apply(ctx, rawConfig = {}) {
           }
         }
 
-        return {
+        return toLossless({
           method: 'image tags → year-scoped artist frequency, layered priority',
           mode,
           year,
           weights,
           groups: groupStats,
           candidates,
-          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for the given year. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
-        }
+          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
+        })
       },
     },
     {
