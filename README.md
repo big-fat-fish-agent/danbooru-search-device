@@ -106,7 +106,8 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 ## 输出约定（画师 vs 图片）
 
 - **画师列表**：每位画师保留 **3 张例图**（不同作品），并**分行纵向排版**（每人一个块：渲染 / 体态 / 面部 / 主页 / 例图），不要用宽表格，避免被横向裁切
-- **例图必须对上需求 tag**：例图优先取「带需求 tag（表情/体型）+ 不隐藏脸」的作品；`danbooru_similar_artists` 的 `examples` 默认按种子表情 tag 过滤，并用 `example_tags` 覆盖；`ass_focus`、`from_behind`、`head_out_of_frame`、`faceless` 等看不到脸的构图会被跳过（没有合格图时才回退到最高分图）
+- **例图软规则**：默认优先取「带需求 tag（表情/体型）+ 能看到脸」的作品；只有用户明确要求背影、剪影、下半身特写等无脸构图时，才传 `allow_no_face=true` 允许无脸例图；`example_tags` 可覆盖需求 tag。`danbooru_similar_artists` 的 `examples` 会返回 `matched_tags` 便于核对
+- **气质降权**：相似度计算里 `furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 的权重乘 **0.05**，避免兽向题材拉动画师相似度
 - **图片列表**：每张图保留 **1 张样图**即可
 - **画风相似判定维度**（目视，不只看 tag）：
   1. **渲染**：上色/软硬阴影、高光与材质（乳胶、亮面布料）、饱和度与色调
@@ -124,7 +125,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.8.2 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。

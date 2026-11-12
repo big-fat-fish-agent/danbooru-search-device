@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.8.1'
+const VERSION = '0.8.2'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -100,8 +100,18 @@ const SIMILARITY_STOPLIST = new Set([
 ])
 const SIMILARITY_TOTAL_POSTS = 8_600_000
 
-/** Compositions that hide the face, so an example post cannot show the required expression. */
-const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame', 'faceless', 'faceless_male', 'no_face', 'lower_body', 'feet_out_of_frame'])
+/** Compositions that hide the face; examples only use them when the caller explicitly allows no face. */
+const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame', 'faceless', 'faceless_male', 'no_face', 'lower_body', 'feet_out_of_frame', 'silhouette'])
+
+/** Tags downweighted in similarity scoring (furry themes should not drive artist similarity). */
+const SIMILARITY_DOWNWEIGHT = new Map([
+  ['furry', 0.05],
+  ['furry_female', 0.05],
+  ['furry_male', 0.05],
+  ['anthro', 0.05],
+  ['humanoid_furry', 0.05],
+])
+const tagDownweight = (name) => SIMILARITY_DOWNWEIGHT.get(name) ?? 1
 
 /** Expression tags used to build a facial-expression profile and compare candidates with the seed. */
 const EXPRESSION_TAGS = new Set([
@@ -923,14 +933,15 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_similar_artists',
-      description: 'Find artists whose tag profile and facial-expression profile resemble a seed artist, using Danbooru co-occurrence data (no image embedding). It builds the seed artist\'s characteristic tags (frequent for them, but not universal site-wide) plus an expression-tag profile (smile, blush, half-closed_eyes, ...), then collects artists who share those tags and scores them by frequency and tag rarity, finally re-ranking by the cosine similarity between the seed\'s and each finalist\'s expression-tag frequency profiles. Pass examples>0 to attach each candidate\'s sample post URLs so the caller can read_image and visually confirm; tag/expression similarity is only a candidate generator, not proof of visual style. When the final deliverable is an artist list, attach examples=3 and keep three sample images per artist; when it is a post list, keep one sample per post. Judge style similarity on rendering (shading, highlights, palette), body build/pose (proportions, fleshiness, height), face features (face shape, eyes, nose, mouth, blush) and expressions, not on tags alone.',
+      description: 'Find artists whose tag profile and facial-expression profile resemble a seed artist, using Danbooru co-occurrence data (no image embedding). It builds the seed artist\'s characteristic tags (frequent for them, but not universal site-wide) plus an expression-tag profile (smile, blush, half-closed_eyes, ...), then collects artists who share those tags and scores them by frequency and tag rarity (furry-themed tags are downweighted to 0.05), finally re-ranking by the cosine similarity between the seed\'s and each finalist\'s expression-tag frequency profiles. Pass examples>0 to attach each candidate\'s sample post URLs so the caller can read_image and visually confirm; tag/expression similarity is only a candidate generator, not proof of visual style. Example selection is a soft rule: prefer posts that carry the required tags (default: seed expression tags) and show the face; set allow_no_face=true only when the user explicitly asks for back views, silhouettes or other face-hidden examples. When the final deliverable is an artist list, attach examples=3 and keep three sample images per artist; when it is a post list, keep one sample per post. Judge style similarity on rendering (shading, highlights, palette), body build/pose (proportions, fleshiness, height), face features (face shape, eyes, nose, mouth, blush) and expressions, not on tags alone.',
       parameters: parameters({
         artist: { type: 'string', description: 'Seed artist tag, e.g. "satou_kuuki". Use danbooru_search_tags if unsure of the canonical name.' },
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
         profile_tags: { type: 'integer', minimum: 3, maximum: 10, description: 'Seed style tags used as the similarity profile (default 6).' },
         min_shared: { type: 'integer', minimum: 1, maximum: 10, description: 'Minimum shared style tags for a candidate (default 2).' },
         examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate for visual confirmation (default 0 = none; each costs one request).' },
-        example_tags: { type: 'string', description: 'Comma-separated tags every example post must carry (default: the seed expression tags, so the face/expression is actually visible). Posts whose composition hides the face (ass_focus, from_behind, head_out_of_frame, ...) are skipped.' },
+        example_tags: { type: 'string', description: 'Comma-separated tags every example post should carry (default: the seed expression tags).' },
+        allow_no_face: { type: 'boolean', description: 'Soft rule override: set true only when the user explicitly asks for back views, silhouettes, lower-body close-ups or other face-hidden examples; otherwise examples prefer posts where the face (and thus the expression) is visible.' },
         expression_tags: { type: 'integer', minimum: 0, maximum: 6, description: 'Seed expression tags used to build the expression profile and expand candidates (default 4; 0 disables expression matching).' },
         expression_weight: { type: 'number', minimum: 0, maximum: 1, description: 'Weight of expression similarity in the final score (default 0.5).' },
       }, ['artist']),
@@ -967,7 +978,7 @@ export function apply(ctx, rawConfig = {}) {
         for (const row of profile) {
           const cooccurring = await request('/related_tag.json', { query: row.name, category: CATEGORY_IDS.artist, limit: 25 }, { signal: exec?.signal, ttlMs: TTL.related })
           const rows = Array.isArray(cooccurring?.related_tags) ? cooccurring.related_tags : []
-          const weight = 1 + Math.log10(SIMILARITY_TOTAL_POSTS / Math.max(1000, row.post_count))
+          const weight = (1 + Math.log10(SIMILARITY_TOTAL_POSTS / Math.max(1000, row.post_count))) * tagDownweight(row.name)
           for (const entry of rows) {
             const name = String(entry?.tag?.name ?? '')
             if (!name || name === artist) continue
@@ -1094,32 +1105,31 @@ export function apply(ctx, rawConfig = {}) {
         candidates.sort((left, right) => right.score - left.score || right.post_count - left.post_count || left.name.localeCompare(right.name))
         candidates.splice(limit)
 
-        // Visual confirmation is left to the caller: attach sample URLs. Examples prefer posts that
-        // carry the required expression tags and do not hide the face.
+        // Visual confirmation is left to the caller. Soft rule: prefer examples that carry the
+        // required tags and show the face; face-hidden compositions are used only when
+        // allow_no_face is set (e.g. the user asked for back views or silhouettes).
         if (exampleCount > 0) {
           const requiredTags = exampleRequired.length > 0 ? exampleRequired : [...seedExpression.keys()]
+          const allowNoFace = args?.allow_no_face === true
           for (const candidate of candidates) {
             try {
               const samplePosts = await request('/posts.json', { tags: `${candidate.name} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
-              const all = Array.isArray(samplePosts) ? samplePosts : []
-              const matches = all.filter((post) => {
-                const general = new Set(splitTags(post.tag_string_general))
-                const hidesFace = [...FACE_HIDDEN_TAGS].some((tag) => general.has(tag))
-                const hasRequired = requiredTags.length === 0 || requiredTags.some((tag) => general.has(tag))
-                return !hidesFace && hasRequired
-              })
-              const picked = (matches.length > 0 ? matches : all).slice(0, exampleCount)
-              candidate.examples = picked.map((post) => {
-                const general = splitTags(post.tag_string_general)
-                return {
-                  post_id: post.id,
-                  post_url: `${ORIGIN}/posts/${post.id}`,
-                  sample_url: post.large_file_url ?? post.file_url ?? null,
-                  preview_url: post.preview_file_url ?? null,
-                  rating: post.rating ?? null,
-                  matched_tags: requiredTags.filter((tag) => general.includes(tag)),
-                }
-              })
+              const rows = (Array.isArray(samplePosts) ? samplePosts : [])
+                .filter((post) => post.large_file_url || post.file_url)
+                .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
+              const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
+              const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
+              const preferred = rows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
+              const expressionOnly = rows.filter((row) => hasRequired(row))
+              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : rows).slice(0, exampleCount)
+              candidate.examples = picked.map((row) => ({
+                post_id: row.post.id,
+                post_url: `${ORIGIN}/posts/${row.post.id}`,
+                sample_url: row.post.large_file_url ?? row.post.file_url ?? null,
+                preview_url: row.post.preview_file_url ?? null,
+                rating: row.post.rating ?? null,
+                matched_tags: requiredTags.filter((tag) => row.general.includes(tag)),
+              }))
             } catch {
               candidate.examples = []
             }
