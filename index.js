@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.9.1'
+const VERSION = '0.10.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -59,9 +59,20 @@ function parseYear(value) {
 const isIllustratorTag = (name) => !/_\(voice_actor\)$/.test(name)
 const splitTags = (value) => (typeof value === 'string' && value.trim() ? value.trim().split(/\s+/).filter(Boolean) : [])
 
-/** Video files (mp4/webm/...) are excluded everywhere; the plugin is image-only. */
-const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v'])
-const isVideoPost = (post) => Boolean(post) && VIDEO_EXTENSIONS.has(String(post.file_ext ?? '').toLowerCase())
+/** Video/animation files (mp4/webm/ugoira zip/...) are excluded everywhere; the plugin is image-only. */
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v', 'zip'])
+const urlExtension = (url) => {
+  const text = String(url ?? '').split('?')[0]
+  const dot = text.lastIndexOf('.')
+  return dot >= 0 ? text.slice(dot + 1).toLowerCase() : ''
+}
+const isVideoPost = (post) => {
+  if (!post) return false
+  if (VIDEO_EXTENSIONS.has(String(post.file_ext ?? '').toLowerCase())) return true
+  if (VIDEO_EXTENSIONS.has(urlExtension(post.file_url)) || VIDEO_EXTENSIONS.has(urlExtension(post.large_file_url))) return true
+  const meta = splitTags(post.tag_string_meta)
+  return meta.includes('ugoira') || meta.includes('video')
+}
 const onlyImages = (posts) => (Array.isArray(posts) ? posts.filter((post) => !isVideoPost(post)) : [])
 const categoryName = (id) => CATEGORY_NAMES[id] ?? String(id ?? 'unknown')
 const truncate = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text)
@@ -129,6 +140,27 @@ const parseTagList = (text) => String(text ?? '').split(/[,\s]+/).map((tag) => t
 const IMAGE_SEARCH_WEIGHTS = {
   person: { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 },
   style: { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 },
+}
+
+/** Body-part focus presets: the first tag is the part-specific focus tag, the rest are broader fallbacks. */
+const PART_PRESETS = {
+  hands: ['hand_focus', 'hands', 'hand_up'],
+  feet: ['foot_focus', 'feet', 'barefoot'],
+  thighs: ['thigh_focus', 'thighs', 'thick_thighs'],
+  legs: ['leg_focus', 'legs', 'pantyhose'],
+  ass: ['ass_focus', 'huge_ass'],
+  breasts: ['breast_focus', 'large_breasts', 'cleavage'],
+  hips: ['hip_focus', 'wide_hips'],
+  eyes: ['eye_focus', 'eyes'],
+  mouth: ['mouth_focus', 'parted_lips'],
+  back: ['back_focus', 'back'],
+  armpits: ['armpit_focus', 'armpits'],
+  navel: ['navel_focus', 'navel'],
+  belly: ['stomach_focus', 'belly'],
+  abs: ['stomach_focus', 'abs'],
+  hair: ['hair_focus', 'long_hair'],
+  neck: ['neck_focus', 'neck'],
+  pectorals: ['pectoral_focus', 'pectorals'],
 }
 
 /** Expression tags used to build a facial-expression profile and compare candidates with the seed. */
@@ -1290,6 +1322,122 @@ export function apply(ctx, rawConfig = {}) {
           groups: groupStats,
           candidates,
           note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for the given year. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
+        }
+      },
+    },
+    {
+      name: 'danbooru_part_specialists',
+      description: 'Rank artists and posts specialized in one body part (hands, feet, thighs, eyes, ...) using the part-focus tags. It searches the part tag ordered by favorites (order:favcount), aggregates the part-tagged posts per artist, ranks artists by total favorites (or avg_favorites / posts), and also returns the highest-favorited part-tagged images. Use it when the user wants "who draws good hands / feet / thighs" or wants top part-focused images. Image-only: video posts are filtered. This is a favorites heuristic; confirm the part rendering visually.',
+      parameters: parameters({
+        part: { type: 'string', enum: Object.keys(PART_PRESETS), description: 'Body part preset, e.g. "hands".' },
+        year: { type: 'integer', minimum: MIN_YEAR, description: 'Optional calendar year limit (default: all time).' },
+        rating: { type: 'string', enum: ['g', 's', 'q', 'e', 'all'], description: 'Rating filter; all (default) = no filter, R18 included.' },
+        artists_limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 8).' },
+        posts_limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Top part-tagged images to return (default 6).' },
+        sample: { type: 'integer', minimum: 20, maximum: 100, description: 'Posts scanned per preset tag, highest favorites first (default 100).' },
+        min_posts: { type: 'integer', minimum: 1, maximum: 20, description: 'Minimum part-tagged posts for an artist to be ranked (default 2).' },
+        rank_by: { type: 'string', enum: ['total_favorites', 'avg_favorites', 'posts'], description: 'Artist ranking: total favorites (default), average favorites, or part-tagged post count.' },
+        include_posts: { type: 'boolean', description: 'Also return the top part-tagged images (default true).' },
+      }, ['part']),
+      output,
+      async execute(args, exec) {
+        const part = String(args?.part ?? '').toLowerCase()
+        const preset = PART_PRESETS[part]
+        if (!preset) throw new Error(`Unknown part "${part}"; choose one of: ${Object.keys(PART_PRESETS).join(', ')}`)
+        const year = parseYear(args?.year)
+        const rating = ['g', 's', 'q', 'e', 'all'].includes(args?.rating) ? args.rating : 'all'
+        const sample = clamp(args?.sample, 20, 100, 100)
+        const artistsLimit = clamp(args?.artists_limit, 1, 25, 8)
+        const postsLimit = clamp(args?.posts_limit, 1, 50, 6)
+        const minPosts = clamp(args?.min_posts, 1, 20, 2)
+        const rankBy = ['total_favorites', 'avg_favorites', 'posts'].includes(args?.rank_by) ? args.rank_by : 'total_favorites'
+        const includePosts = args?.include_posts !== false
+
+        const byArtist = new Map()
+        const allPosts = new Map()
+        const tagStats = []
+        const tagsToQuery = preset.slice(0, 2)
+        for (const tag of tagsToQuery) {
+          const baseParts = [tag, year ? yearTag(year) : '', rating !== 'all' ? `rating:${rating}` : ''].filter(Boolean)
+          let rows
+          try {
+            rows = await request('/posts.json', { tags: [...baseParts, 'order:favcount'].join(' '), limit: sample }, { signal: exec?.signal, ttlMs: TTL.posts })
+          } catch {
+            // Anonymous accounts may not allow the extra order metatag; fall back and sort client-side.
+            rows = await request('/posts.json', { tags: baseParts.join(' '), limit: sample }, { signal: exec?.signal, ttlMs: TTL.posts })
+          }
+          const photos = onlyImages(rows)
+          tagStats.push({ tag, posts: photos.length })
+          for (const post of photos) {
+            const postId = post.id
+            if (allPosts.has(postId)) continue
+            const favorites = Number(post.fav_count) || 0
+            const reference = {
+              post_id: postId,
+              post_url: `${ORIGIN}/posts/${postId}`,
+              preview_url: post.preview_file_url ?? null,
+              sample_url: post.large_file_url ?? post.file_url ?? null,
+              fav_count: favorites,
+              score: Number(post.score) || 0,
+              rating: post.rating ?? null,
+            }
+            allPosts.set(postId, { ...reference, post })
+            for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
+              const entry = byArtist.get(name) ?? { name, posts: 0, total: 0, refs: [] }
+              entry.posts += 1
+              entry.total += favorites
+              entry.refs.push(reference)
+              byArtist.set(name, entry)
+            }
+          }
+        }
+
+        const compare = {
+          total_favorites: (left, right) => right.total - left.total,
+          avg_favorites: (left, right) => right.total / Math.max(1, right.posts) - left.total / Math.max(1, left.posts),
+          posts: (left, right) => right.posts - left.posts,
+        }[rankBy]
+        const artists = [...byArtist.values()]
+          .filter((entry) => entry.posts >= minPosts)
+          .sort((left, right) => compare(left, right) || left.name.localeCompare(right.name))
+          .slice(0, artistsLimit)
+          .map((entry) => ({
+            name: entry.name,
+            artist_url: artistPostsUrl(entry.name, year),
+            part_posts: entry.posts,
+            total_favorites: entry.total,
+            avg_favorites: round(entry.total / Math.max(1, entry.posts), 1),
+            best: entry.refs.sort((left, right) => right.fav_count - left.fav_count).slice(0, 3),
+          }))
+
+        const posts = includePosts
+          ? [...allPosts.values()]
+            .sort((left, right) => right.fav_count - left.fav_count || right.score - left.score)
+            .slice(0, postsLimit)
+            .map((entry) => ({
+              post_id: entry.post_id,
+              post_url: entry.post_url,
+              sample_url: entry.sample_url,
+              preview_url: entry.preview_url,
+              fav_count: entry.fav_count,
+              score: entry.score,
+              rating: entry.rating,
+              artists: splitTags(entry.post.tag_string_artist).filter(isIllustratorTag),
+            }))
+          : []
+
+        return {
+          part,
+          tags: preset,
+          year: year ?? null,
+          rating,
+          rank_by: rankBy,
+          sample,
+          scanned: tagStats,
+          scanned_posts: allPosts.size,
+          artists,
+          posts,
+          note: 'Artists are ranked by favorites of posts carrying the part-focus tag(s); parts are tagged, so a good part drawing without the focus tag is missed. Confirm the part rendering visually before deciding.',
         }
       },
     },

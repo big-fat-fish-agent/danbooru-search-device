@@ -40,7 +40,7 @@ function check(label, condition, detail) {
   }
 }
 
-check('registers eleven tools', registered.size === 11, `registered=${[...registered.keys()].join(', ')}`)
+check('registers twelve tools', registered.size === 12, `registered=${[...registered.keys()].join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false
@@ -100,6 +100,10 @@ check('year filter scopes posts to the calendar year', yearPosts.count > 0 && ye
 check('score order is descending', yearPosts.posts.every((post, index, all) => index === 0 || all[index - 1].score >= post.score), JSON.stringify(yearPosts.posts.map((post) => post.score)))
 const VIDEO_EXTS = ['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v']
 check('search results are images only', [...posts.posts, ...yearPosts.posts].every((post) => !VIDEO_EXTS.includes(String(post.image?.file_ext ?? '').toLowerCase())), JSON.stringify([...posts.posts, ...yearPosts.posts].map((post) => post.image?.file_ext)))
+
+const partSearch = await call('danbooru_part_specialists', { part: 'hands', year: 2025, artists_limit: 5, posts_limit: 5 })
+check('part specialists ranks artists by part-post favorites', partSearch.artists.length > 0 && partSearch.artists.every((artist, index, all) => index === 0 || all[index - 1].total_favorites >= artist.total_favorites) && partSearch.artists.every((artist) => artist.part_posts >= 2 && Array.isArray(artist.best) && artist.best.length > 0), JSON.stringify(partSearch.artists.map((artist) => [artist.name, artist.total_favorites, artist.part_posts])).slice(0, 300))
+check('part specialists returns top part-tagged images', partSearch.posts.length > 0 && partSearch.posts.every((post, index, all) => index === 0 || all[index - 1].fav_count >= post.fav_count) && partSearch.posts.every((post) => !VIDEO_EXTS.includes(String(post.sample_url ?? '').toLowerCase().split('.').pop())), JSON.stringify(partSearch.posts.map((post) => [post.post_id, post.fav_count])).slice(0, 300))
 
 const topArtists = await call('danbooru_top_artists', { year: 2025, sample: 100, limit: 5 })
 check('top_artists ranks artists for the year', topArtists.artists.length > 0 && topArtists.sampled_posts > 0, JSON.stringify(topArtists).slice(0, 400))

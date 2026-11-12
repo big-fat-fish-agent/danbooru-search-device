@@ -23,6 +23,7 @@
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）聚合该年画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`color_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
+| `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
 | `danbooru_save_credentials` | 把登录名与 API key 存进 Harness 凭据库（私有文件） | `login`、`apiKey`、`clear` |
@@ -126,6 +127,19 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
   `danbooru_artists_from_image(image_tags="latex bodysuit, leopard_print", person_tags="huge_breasts, thick_thighs", expression_tags="closed_mouth, half-closed_eyes", technique_tags="latex, shiny_clothes", color_tags="white_background, blue_theme", year=2025, limit=10, examples=3)`
 - 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
 
+## 部位特化搜索（画手 / 画脚 / 画腿…）
+
+`danbooru_part_specialists` 用 D 站的**部位焦点 tag** 检索「该部位 + 高收藏」作品，再按画师聚合，专门回答「谁画手/脚/腿/眼睛画得好」这类问题。
+
+- `part` 可选：`hands`、`feet`、`thighs`、`legs`、`ass`、`breasts`、`hips`、`eyes`、`mouth`、`back`、`armpits`、`navel`、`belly`、`abs`、`hair`、`neck`、`pectorals`
+- 每个部位取前两个 tag（如 `hand_focus` + `hands`），按 `order:favcount` 各扫一遍（默认 100 条），统计画师在该部位作品上的**收藏总数**
+- `rank_by`：`total_favorites`（默认，收藏总量）/ `avg_favorites`（单图均值）/ `posts`（作品数量）
+- `min_posts`：画师至少要有几张部位作品才入榜（默认 2）
+- 同时返回 `posts`：该部位 tag 下收藏最高的图片（默认 6 张，含 `sample_url`）
+- 只选图片，视频自动过滤；`year` 可限定年份（默认全时间）
+- 用法：`danbooru_part_specialists(part="hands", year=2025, rank_by="total_favorites", artists_limit=10, posts_limit=8)`
+- 局限：依赖作者打了部位焦点 tag，没打 tag 的好图会漏；最终仍需目视确认部位画法
+
 ## 输出约定（画师 vs 图片）
 
 - **画师列表**：每位画师保留 **3 张例图**（不同作品），并**分行纵向排版**（每人一个块：渲染 / 体态 / 面部 / 主页 / 例图），不要用宽表格，避免被横向裁切
@@ -148,7 +162,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.9.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.10.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -204,11 +218,12 @@ node verify.mjs
 
 - 插件没有「批量下载图片」的工具；下载发生在 Agent 的 shell 侧，属于会话临时操作，不是插件能力。
 - 内容分级**默认返回全部（含 R18）**；需要全年龄内容时显式传 `rating="g"`，结果可能不适合所有场景。
-- **只返回图片**：所有工具都会过滤掉视频作品（`mp4`/`webm`/`mkv`/`mov`/`avi`/`m4v`），搜索、画师参考图、例图都只给静态图；`danbooru_get_post` 按 id 查询除外（显式请求仍可看到原帖信息）
+- **只返回图片**：所有工具都会过滤掉视频与动画作品（`mp4`/`webm`/`mkv`/`mov`/`avi`/`m4v`、ugoira 的 `zip`，以及 `meta` 里带 `ugoira`/`video` 的帖子），搜索、画师参考图、例图都只给静态图；`danbooru_get_post` 按 id 查询除外（显式请求仍可看到原帖信息）
 - wiki 摘要是截断后的纯文本，保留了 Danbooru 的 wiki 标记（如 `[[tag]]`），不是渲染后的富文本。
 
 ## 更新记录
 
+- **0.10.0**：新增 `danbooru_part_specialists`（部位特化：按部位焦点 tag 的高收藏作品聚合画师排名 + 部位高收藏图片）
 - **0.9.1**：全工具只返回图片（过滤 `mp4`/`webm` 等视频；搜索、画师参考图、例图均跳过视频）
 - **0.9.0**：新增 `danbooru_artists_from_image`（以图搜画师，分层优先级：人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）
 - **0.8.3**：清理过时文档（重复的安装章节、旧的自检耗时、工具数量），DSH 内与仓库说明同步为当前能力（表情画像/余弦、例图软规则、furry 降权）
