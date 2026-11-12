@@ -1,6 +1,8 @@
-# D站搜索装置（dsh-danbooru-tools）
+# DSH-D站搜索装置（dsh-danbooru-tools）
 
 给 DeepSeek Harness 用的**只读 Danbooru 工具插件**：纯 Host 插件、零运行时依赖、不写任何文件，只用官方 JSON API。
+
+> ⚠️ **这是 DSH 插件（bundle），不是可以直接双击/命令行运行的本地程序。** `index.js` 依赖 DSH 注入的 `ctx`（工具注册、凭据服务），直接 `node index.js` 会报错，也没有独立 CLI；必须按下面的「安装」章节装进 DeepSeek Harness 的 profile 才能用（名称里的 `dsh-` 前缀就是这个意思）。
 
 > **AI 制作说明**：本项目由 **AI Agent**（DeepSeek Harness 中的会话 Agent）设计、实现与测试——代码、文档、检索算法与自检脚本均为 AI 生成，并经真实 API 请求验证；人类只负责提需求与验收结果。
 
@@ -208,7 +210,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.12.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.12.2 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -265,6 +267,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.12.2**：插件标题/介绍统一加 `DSH-` 前缀，并明确标注「DSH bundle，不是可独立运行的程序」
 - **0.12.1**：仓库转为公开；README 与插件介绍标注「AI 制作」；安装章节拆分为「下载包 / git clone + link / 源码 zip」三种方案；新增「宇宙免责声明」（跑路条款）
 - **0.12.0**：过滤/降权 3D 渲染（`3d`/`photorealistic`/`faux_3d`）：相似度降权 0.05、以图搜画师按 `three_d_share` 扣分、例图与部位图优先排除 3D
 - **0.11.0**：以图搜画师新增 `lineart_tags`（线条）与 `lighting_tags`（光照）维度，且每个维度最多 4 个 tag 全部参与检索（之前只查前两个），线条/色彩/光照正式进入评分
