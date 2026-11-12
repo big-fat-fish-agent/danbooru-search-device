@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.11.0'
+const VERSION = '0.12.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -122,13 +122,20 @@ const SIMILARITY_TOTAL_POSTS = 8_600_000
 /** Compositions that hide the face; examples only use them when the caller explicitly allows no face. */
 const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame', 'faceless', 'faceless_male', 'no_face', 'lower_body', 'feet_out_of_frame', 'silhouette'])
 
-/** Tags downweighted in similarity scoring (furry themes should not drive artist similarity). */
+/** Tags that mark 3D/photoreal renders; they are downweighted and examples prefer 2D drawings. */
+const THREE_D_TAGS = new Set(['3d', 'photorealistic', 'faux_3d'])
+const isThreeDPost = (post) => Boolean(post) && splitTags(post.tag_string_general).some((tag) => THREE_D_TAGS.has(tag))
+
+/** Tags downweighted in similarity scoring (furry themes and 3D renders should not drive artist similarity). */
 const SIMILARITY_DOWNWEIGHT = new Map([
   ['furry', 0.05],
   ['furry_female', 0.05],
   ['furry_male', 0.05],
   ['anthro', 0.05],
   ['humanoid_furry', 0.05],
+  ['3d', 0.05],
+  ['photorealistic', 0.05],
+  ['faux_3d', 0.05],
 ])
 const tagDownweight = (name) => SIMILARITY_DOWNWEIGHT.get(name) ?? 1
 
@@ -1267,10 +1274,12 @@ export function apply(ctx, rawConfig = {}) {
             for (const post of data) {
               if (seenInGroup.has(post.id)) continue
               seenInGroup.add(post.id)
+              const threeD = isThreeDPost(post)
               for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
-                const entry = standing.get(name) ?? { name, score: 0, posts: 0, dimensions: {} }
+                const entry = standing.get(name) ?? { name, score: 0, posts: 0, three_d: 0, dimensions: {} }
                 entry.score += perTagWeight / data.length
                 entry.posts += 1
+                if (threeD) entry.three_d += 1
                 entry.dimensions[group.key] = (entry.dimensions[group.key] ?? 0) + 1
                 standing.set(name, entry)
               }
@@ -1282,13 +1291,18 @@ export function apply(ctx, rawConfig = {}) {
         const candidates = [...standing.values()]
           .sort((left, right) => right.score - left.score || right.posts - left.posts || left.name.localeCompare(right.name))
           .slice(0, limit)
-          .map((entry) => ({
-            name: entry.name,
-            artist_url: artistPostsUrl(entry.name, year),
-            score: round(entry.score * 100, 2),
-            posts: entry.posts,
-            dimensions: entry.dimensions,
-          }))
+          .map((entry) => {
+            const threeDShare = entry.posts > 0 ? entry.three_d / entry.posts : 0
+            return {
+              name: entry.name,
+              artist_url: artistPostsUrl(entry.name, year),
+              // Candidates leaning on 3D/photoreal renders are pushed down: the target is a 2D drawing.
+              score: round(entry.score * 100 * (1 - 0.7 * threeDShare), 2),
+              posts: entry.posts,
+              three_d_share: round(threeDShare, 3),
+              dimensions: entry.dimensions,
+            }
+          })
 
         if (exampleCount > 0) {
           const requested = parseTagList(args?.example_tags)
@@ -1300,11 +1314,12 @@ export function apply(ctx, rawConfig = {}) {
               const rows = (Array.isArray(data) ? data : [])
                 .filter((post) => (post.large_file_url || post.file_url) && !isVideoPost(post))
                 .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
+              const photoRows = rows.filter((row) => !isThreeDPost(row.post))
               const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
               const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
-              const preferred = rows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
-              const expressionOnly = rows.filter((row) => hasRequired(row))
-              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : rows).slice(0, exampleCount)
+              const preferred = photoRows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
+              const expressionOnly = photoRows.filter((row) => hasRequired(row))
+              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : photoRows.length > 0 ? photoRows : rows).slice(0, exampleCount)
               candidate.examples = picked.map((row) => ({
                 post_id: row.post.id,
                 post_url: `${ORIGIN}/posts/${row.post.id}`,
@@ -1371,7 +1386,7 @@ export function apply(ctx, rawConfig = {}) {
             // Anonymous accounts may not allow the extra order metatag; fall back and sort client-side.
             rows = await request('/posts.json', { tags: baseParts.join(' '), limit: sample }, { signal: exec?.signal, ttlMs: TTL.posts })
           }
-          const photos = onlyImages(rows)
+          const photos = onlyImages(rows).filter((post) => !isThreeDPost(post))
           tagStats.push({ tag, posts: photos.length })
           for (const post of photos) {
             const postId = post.id
