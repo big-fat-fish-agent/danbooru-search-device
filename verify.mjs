@@ -158,9 +158,13 @@ check('compact mode drops post references', styleArtists.artists.every((artist) 
 const defaultStyle = await call('danbooru_year_artists', { year: 2025, limit: 1, monthly_sample: 20, style_preset: 'fleshy', style_max_checks: 2 })
 check('style gate defaults to 5 percent with two required hits', defaultStyle.style_filter?.threshold === 0.05 && defaultStyle.style_filter?.min_hits === 2, JSON.stringify(defaultStyle.style_filter))
 
-const appearanceArtists = await call('danbooru_year_artists', { year: 2025, limit: 2, monthly_sample: 20, appearance_tags: 'blush', appearance_match: 'any', style_max_checks: 3, compact: true })
-check('appearance block measures skin/eye reference tags', Boolean(appearanceArtists.appearance_filter) && appearanceArtists.artists.length > 0 && appearanceArtists.artists.every((artist) => typeof artist.appearance?.ratio === 'number' && artist.appearance.ratio >= 0 && Array.isArray(artist.appearance?.best) && (artist.appearance.per_tag?.blush ?? -1) >= 0), JSON.stringify(appearanceArtists.artists[0]?.appearance ?? {}).slice(0, 300))
+const appearanceArtists = await call('danbooru_year_artists', { year: 2025, limit: 2, monthly_sample: 20, appearance_tags: 'shiny_skin', appearance_match: 'any', style_max_checks: 3, compact: true })
+check('appearance block measures skin reference tags', Boolean(appearanceArtists.appearance_filter) && appearanceArtists.artists.length > 0 && appearanceArtists.artists.every((artist) => typeof artist.appearance?.ratio === 'number' && artist.appearance.ratio >= 0 && Array.isArray(artist.appearance?.best) && (artist.appearance.per_tag?.shiny_skin ?? -1) >= 0), JSON.stringify(appearanceArtists.artists[0]?.appearance ?? {}).slice(0, 300))
 check('appearance defaults to report-only without gating', appearanceArtists.appearance_filter?.threshold === 0 && appearanceArtists.appearance_filter?.match === 'any', JSON.stringify(appearanceArtists.appearance_filter))
+
+const colorArtists = await call('danbooru_year_artists', { year: 2025, limit: 2, monthly_sample: 20, color_tags: 'blue_theme,monochrome', color_match: 'any', style_max_checks: 3, compact: true })
+check('color block measures overall palette tags', Boolean(colorArtists.color_filter) && colorArtists.artists.length > 0 && colorArtists.artists.every((artist) => typeof artist.color?.ratio === 'number' && artist.color.ratio >= 0 && Array.isArray(artist.color?.best) && (artist.color.per_tag?.blue_theme ?? -1) >= 0), JSON.stringify(colorArtists.artists[0]?.color ?? {}).slice(0, 300))
+check('color defaults to report-only without gating', colorArtists.color_filter?.threshold === 0 && colorArtists.color_filter?.match === 'any', JSON.stringify(colorArtists.color_filter))
 
 let yearRejected = false
 try {

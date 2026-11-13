@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.13.0'
+const VERSION = '0.14.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -699,7 +699,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_year_artists',
-      description: 'Rank artists by the total favorites of posts uploaded in one calendar year, independent of the Hot/weekly weighting. It samples each month of the year by favorites (order:favcount, one request per elapsed month) and sums favorites per artist, so a full year with no recency bias. With style_tags or style_preset it also verifies each candidate on their own year posts and keeps only artists whose share of body-shape-tagged posts reaches style_threshold (default 0.05) with at least style_min_hits hits; pose/composition tags are not counted as evidence, so close-up rear shots cannot fake a fleshy body type. With appearance_tags it additionally measures 人体 references on the same year posts: skin color (pale_skin, dark_skin, tan), skin texture (shiny_skin, sweat, wet) and eye color (red_eyes, blue_eyes, heterochromia), returning an appearance block with per-tag hit counts, a ratio and up to three reference posts; appearance_threshold optionally gates on that share. Each returned artist carries style.best / appearance.best references. Use this when the user asks for popular artists of a body type, skin or eye look in a year.',
+      description: 'Rank artists by the total favorites of posts uploaded in one calendar year, independent of the Hot/weekly weighting. It samples each month of the year by favorites (order:favcount, one request per elapsed month) and sums favorites per artist, so a full year with no recency bias. With style_tags or style_preset it also verifies each candidate on their own year posts and keeps only artists whose share of body-shape-tagged posts reaches style_threshold (default 0.05) with at least style_min_hits hits; pose/composition tags are not counted as evidence, so close-up rear shots cannot fake a fleshy body type. With appearance_tags it measures 人体 references on the same year posts: skin color (pale_skin, dark_skin, tan) and skin texture (shiny_skin, sweat, wet), returning an appearance block with per-tag hit counts, a ratio and up to three reference posts. With color_tags it measures the overall palette instead: monochrome, limited_palette, pastel_colors, blue_theme, colorful, iridescent and similar, returning a color block the same way. Each threshold (appearance_threshold / color_threshold) optionally gates on that share. Each returned artist carries style.best / appearance.best / color.best references. Use this when the user asks for popular artists of a body type, skin look or overall color tone in a year.',
       parameters: parameters({
         year: { type: 'integer', minimum: 2005, description: 'Calendar year to rank, e.g. 2026.' },
         tags: { type: 'string', description: 'Optional real tags to narrow every monthly sample.' },
@@ -713,9 +713,12 @@ export function apply(ctx, rawConfig = {}) {
         style_min_posts: { type: 'integer', minimum: 1, maximum: 100, description: 'Minimum year posts to check before judging the ratio (default 3).' },
         style_min_hits: { type: 'integer', minimum: 1, maximum: 100, description: 'Minimum number of checked posts that must carry a style tag (default 2), so a single stray tag cannot qualify an artist.' },
         style_max_checks: { type: 'integer', minimum: 1, maximum: 120, description: 'Maximum artists to verify in favorites order before stopping (default 40).' },
-        appearance_tags: { type: 'string', description: 'Extra 人体 reference tags verified on each candidate\'s year posts: skin color (pale_skin, dark_skin, tan), skin texture (shiny_skin, sweat, wet, oiled_skin) and eye color (red_eyes, blue_eyes, yellow_eyes, heterochromia). Returned artists get an appearance block with per-tag hit counts and up to three reference posts.' },
+        appearance_tags: { type: 'string', description: '人体附加参考 tags verified on each candidate\'s year posts: skin color (pale_skin, dark_skin, tan) and skin texture (shiny_skin, sweat, wet, oiled_skin). Eye color is not part of the body block anymore — use color_tags for the overall palette. Returned artists get an appearance block with per-tag hit counts and up to three reference posts.' },
         appearance_match: { type: 'string', enum: ['any', 'all'], description: 'any (default) counts a post that has at least one appearance tag; all requires every tag.' },
         appearance_threshold: { type: 'number', minimum: 0, maximum: 1, description: 'Optional gate: require at least this share of the artist\'s checked year posts to carry an appearance tag (default 0 = report only, no gating).' },
+        color_tags: { type: 'string', description: '整体色调参考 tags verified on the same year posts: monochrome, limited_palette, pastel_colors, blue_theme, red_theme, colorful, iridescent, high_contrast... Returned artists get a color block with per-tag hit counts, a ratio and up to three reference posts.' },
+        color_match: { type: 'string', enum: ['any', 'all'], description: 'any (default) counts a post that has at least one color tag; all requires every tag.' },
+        color_threshold: { type: 'number', minimum: 0, maximum: 1, description: 'Optional gate: require at least this share of the artist\'s checked year posts to carry a color tag (default 0 = report only, no gating).' },
         compact: { type: 'boolean', description: 'Return only name, total_favorites, posts, months and style ratio (no post references) to keep responses small when scanning many artists.' },
       }, ['year']),
       output,
@@ -743,6 +746,10 @@ export function apply(ctx, rawConfig = {}) {
         const appearanceMatchAll = args?.appearance_match === 'all'
         const appearanceThreshold = clampFloat(args?.appearance_threshold, 0, 1, 0)
         const hasAppearance = appearanceTags.length > 0
+        const colorTags = [...new Set(splitStyleTags(args?.color_tags))]
+        const colorMatchAll = args?.color_match === 'all'
+        const colorThreshold = clampFloat(args?.color_threshold, 0, 1, 0)
+        const hasColor = colorTags.length > 0
         const compact = args?.compact === true
         const byArtist = new Map()
         const sample = []
@@ -800,7 +807,8 @@ export function apply(ctx, rawConfig = {}) {
         let artists = rankedArtists.slice(0, limit)
         let styleFilter = null
         let appearanceFilter = null
-        if (styleTags.length > 0 || hasAppearance) {
+        let colorFilter = null
+        if (styleTags.length > 0 || hasAppearance || hasColor) {
           const qualified = []
           let checked = 0
           for (const artist of rankedArtists) {
@@ -817,34 +825,63 @@ export function apply(ctx, rawConfig = {}) {
             if (checkedPosts.length < styleMinPosts) continue
             const stylePosts = []
             const appearancePosts = []
+            const colorPosts = []
             const perTag = Object.fromEntries(appearanceTags.map((tag) => [tag, 0]))
+            const colorPerTag = Object.fromEntries(colorTags.map((tag) => [tag, 0]))
             let hits = 0
             let poseHits = 0
             let appearanceHits = 0
+            let colorHits = 0
+            const needPool = hasAppearance || hasColor
             for (const post of checkedPosts) {
               if (postHasStyle(post, POSE_TAGS, false)) poseHits += 1
-              if (hasAppearance) {
+              if (needPool) {
                 const pool = new Set([...splitTags(post.tag_string_general), ...splitTags(post.tag_string_character)])
-                const matchedTags = []
-                for (const tag of appearanceTags) {
-                  if (pool.has(tag)) {
-                    perTag[tag] += 1
-                    matchedTags.push(tag)
+                if (hasAppearance) {
+                  const matchedTags = []
+                  for (const tag of appearanceTags) {
+                    if (pool.has(tag)) {
+                      perTag[tag] += 1
+                      matchedTags.push(tag)
+                    }
+                  }
+                  const matched = matchedTags.length > 0 && (!appearanceMatchAll || matchedTags.length === appearanceTags.length)
+                  if (matched) {
+                    appearanceHits += 1
+                    appearancePosts.push({
+                      post_id: post.id,
+                      post_url: `${ORIGIN}/posts/${post.id}`,
+                      preview_url: post.preview_file_url ?? null,
+                      sample_url: post.large_file_url ?? post.file_url ?? null,
+                      created_at: post.created_at ?? null,
+                      fav_count: Number(post.fav_count) || 0,
+                      rating: post.rating ?? null,
+                      matched_tags: matchedTags,
+                    })
                   }
                 }
-                const matched = matchedTags.length > 0 && (!appearanceMatchAll || matchedTags.length === appearanceTags.length)
-                if (matched) {
-                  appearanceHits += 1
-                  appearancePosts.push({
-                    post_id: post.id,
-                    post_url: `${ORIGIN}/posts/${post.id}`,
-                    preview_url: post.preview_file_url ?? null,
-                    sample_url: post.large_file_url ?? post.file_url ?? null,
-                    created_at: post.created_at ?? null,
-                    fav_count: Number(post.fav_count) || 0,
-                    rating: post.rating ?? null,
-                    matched_tags: matchedTags,
-                  })
+                if (hasColor) {
+                  const matchedTags = []
+                  for (const tag of colorTags) {
+                    if (pool.has(tag)) {
+                      colorPerTag[tag] += 1
+                      matchedTags.push(tag)
+                    }
+                  }
+                  const matched = matchedTags.length > 0 && (!colorMatchAll || matchedTags.length === colorTags.length)
+                  if (matched) {
+                    colorHits += 1
+                    colorPosts.push({
+                      post_id: post.id,
+                      post_url: `${ORIGIN}/posts/${post.id}`,
+                      preview_url: post.preview_file_url ?? null,
+                      sample_url: post.large_file_url ?? post.file_url ?? null,
+                      created_at: post.created_at ?? null,
+                      fav_count: Number(post.fav_count) || 0,
+                      rating: post.rating ?? null,
+                      matched_tags: matchedTags,
+                    })
+                  }
                 }
               }
               if (styleTags.length === 0) continue
@@ -862,11 +899,14 @@ export function apply(ctx, rawConfig = {}) {
             }
             const ratio = hits / checkedPosts.length
             const appearanceRatio = appearanceHits / checkedPosts.length
+            const colorRatio = colorHits / checkedPosts.length
             const styleOk = styleTags.length === 0 || (ratio >= styleThreshold && hits >= styleMinHits)
             const appearanceOk = !hasAppearance || appearanceThreshold <= 0 || (appearanceRatio >= appearanceThreshold && appearanceHits > 0)
-            if (styleOk && appearanceOk) {
+            const colorOk = !hasColor || colorThreshold <= 0 || (colorRatio >= colorThreshold && colorHits > 0)
+            if (styleOk && appearanceOk && colorOk) {
               stylePosts.sort((left, right) => right.fav_count - left.fav_count)
               appearancePosts.sort((left, right) => right.fav_count - left.fav_count)
+              colorPosts.sort((left, right) => right.fav_count - left.fav_count)
               qualified.push({
                 ...artist,
                 ...(styleTags.length > 0
@@ -898,6 +938,20 @@ export function apply(ctx, rawConfig = {}) {
                       },
                     }
                   : {}),
+                ...(hasColor
+                  ? {
+                      color: {
+                        tags: colorTags,
+                        match: colorMatchAll ? 'all' : 'any',
+                        threshold: colorThreshold,
+                        checked_posts: checkedPosts.length,
+                        hit_posts: colorHits,
+                        ratio: round(colorRatio, 3),
+                        per_tag: colorPerTag,
+                        best: colorPosts.slice(0, 3),
+                      },
+                    }
+                  : {}),
               })
             }
           }
@@ -925,6 +979,17 @@ export function apply(ctx, rawConfig = {}) {
                 qualified: qualified.length,
               }
             : null
+          colorFilter = hasColor
+            ? {
+                tags: colorTags,
+                match: colorMatchAll ? 'all' : 'any',
+                threshold: colorThreshold,
+                min_posts: styleMinPosts,
+                max_checks: styleMaxChecks,
+                checked_artists: checked,
+                qualified: qualified.length,
+              }
+            : null
         }
 
         return {
@@ -945,13 +1010,15 @@ export function apply(ctx, rawConfig = {}) {
                 months: artist.months,
                 ...(artist.style ? { style: artist.style } : {}),
                 ...(artist.appearance ? { appearance: artist.appearance } : {}),
+                ...(artist.color ? { color: artist.color } : {}),
               }))
             : artists,
           style_filter: styleFilter,
           appearance_filter: appearanceFilter,
+          color_filter: colorFilter,
           sample,
-          note: styleFilter || appearanceFilter
-            ? 'Total favorites are summed over each month\'s highest-favorited sample and each candidate\'s style/appearance share is measured on up to 100 of their own highest-favorited posts from that year, so both are estimates. This ranking is separate from the Hot/rising weighting.'
+          note: styleFilter || appearanceFilter || colorFilter
+            ? 'Total favorites are summed over each month\'s highest-favorited sample and each candidate\'s style/appearance/color share is measured on up to 100 of their own highest-favorited posts from that year, so both are estimates. This ranking is separate from the Hot/rising weighting.'
             : 'Total favorites are summed over each month\'s highest-favorited sample, so they estimate the year total rather than the exact site-wide sum; posts outside the per-month cap are not counted. This ranking is separate from the Hot/rising weighting.',
         }
       },
