@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools for DeepSeek Harness: post/tag search, tag details, wiki excerpts, related tags, year-favorites artist ranking with a body-shape tag gate plus skin (color/texture) and overall color-tone references, Hot/rising weighted sampling, tag-profile + expression-profile artist similarity, layered image-to-artist search (person/expression/technique/lineart/color/lighting/tag priority), and body-part specialist ranking; video/ugoira and 3D renders are filtered or downweighted.",

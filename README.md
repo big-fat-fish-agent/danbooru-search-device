@@ -206,6 +206,14 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
   `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
 - 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
 
+### 借鉴与放弃（对照 Google 以图搜图）
+
+- **借鉴并已实现：近重复/同源图聚类**——同一张画的改色、裁切、variant 帖在 Danbooru 上共享 `parent_id` 或 `md5`，`artists_from_image` 先按「视觉簇」去重再计分，避免同一张画给同一画师叠加多次证据；例图也只从不同簇里挑。`part_specialists` 同样折叠重复图（顶层返回 `deduped_posts`）
+- **借鉴并已有：多信号排序 + 兜底**——分层维度加权、收藏热度排序；例图优先「带需求 tag + 有脸」，找不到才逐级放宽
+- **放弃：视觉 embedding 检索**——需要本地 CLIP/BLIP 级模型（几 GB 依赖），和「零运行时依赖、轻量、只读 API」的定位冲突；Danbooru 也没有公开的相似图/向量检索 API
+- **放弃：OCR 识别签名/水印**——需要 OCR 依赖；而会话里 Agent 本身就能看图上的文字，没必要塞进插件
+- 若以后真要做视觉向量检索，应**单开一个子插件**（本地视觉服务负责图 → embedding，再向本插件提供候选），而不是把重依赖塞进这个插件
+
 ## 部位特化搜索（画手 / 画脚 / 画腿…）
 
 `danbooru_part_specialists` 用 D 站的**部位焦点 tag** 检索「该部位 + 高收藏」作品，再按画师聚合，专门回答「谁画手/脚/腿/眼睛画得好」这类问题。
@@ -242,7 +250,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.14.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.15.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -278,7 +286,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化等 48 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化等 49 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -299,6 +307,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.15.0**：借鉴以图搜图的「近重复聚类」——以 `parent_id`/`md5` 把同一张画的不同变体（改色、裁切、variant 帖）归为一个视觉簇；`artists_from_image` 按簇去重后再聚合证据，例图只取不同簇；`part_specialists` 也按簇折叠重复图；输出增加 `dedupe` 与每组 `unique_clusters` / `deduped_posts`
 - **0.14.0**：眼睛色彩从「人体附加参考」中移除；新增「整体色调参考」`color_tags` / `color_match` / `color_threshold`（`monochrome`、`limited_palette`、`pastel_colors`、`blue_theme`、`colorful`、`iridescent` 等），返回 `color.per_tag` 与 `color.best` 参考图
 - **0.13.0**：`danbooru_year_artists` 新增「人体附加参考」`appearance_tags` / `appearance_match` / `appearance_threshold`：在同一批核验作品上统计肤色、皮肤质感 tag（`per_tag` 命中数 + `ratio` + `appearance.best` 参考图），可只统计或按比例加闸门
 - **0.12.2**：插件标题/介绍统一加 `DSH-` 前缀，并明确标注「DSH bundle，不是可独立运行的程序」

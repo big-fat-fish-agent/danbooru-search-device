@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.14.0'
+const VERSION = '0.15.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -125,6 +125,30 @@ const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame
 /** Tags that mark 3D/photoreal renders; they are downweighted and examples prefer 2D drawings. */
 const THREE_D_TAGS = new Set(['3d', 'photorealistic', 'faux_3d'])
 const isThreeDPost = (post) => Boolean(post) && splitTags(post.tag_string_general).some((tag) => THREE_D_TAGS.has(tag))
+
+/** Near-duplicate cluster key, borrowed from reverse-image-search practise: edits and variants
+ * of one drawing share a base post via `parent_id`, identical uploads share `md5`, and anything
+ * else is its own cluster. Deduping by cluster keeps a variant set (crops, colour edits, variant
+ * posts) from stacking the same evidence several times. */
+function visualClusterKey(post) {
+  if (post?.parent_id) return `p:${post.parent_id}`
+  if (post?.md5) return `m:${post.md5}`
+  return `i:${post?.id}`
+}
+
+/** Pick examples from distinct visual clusters (first occurrence wins) so a variant set cannot
+ * fill an artist's three samples with near-identical images. */
+function dedupeByCluster(rows, keyOf = (row) => row.post) {
+  const seen = new Set()
+  const out = []
+  for (const row of rows) {
+    const key = visualClusterKey(keyOf(row))
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(row)
+  }
+  return out
+}
 
 /** Tags downweighted in similarity scoring (furry themes and 3D renders should not drive artist similarity). */
 const SIMILARITY_DOWNWEIGHT = new Map([
@@ -1323,7 +1347,8 @@ export function apply(ctx, rawConfig = {}) {
               const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
               const preferred = rows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
               const expressionOnly = rows.filter((row) => hasRequired(row))
-              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : rows).slice(0, exampleCount)
+              const pool = preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : rows
+              const picked = dedupeByCluster(pool).slice(0, exampleCount)
               candidate.examples = picked.map((row) => ({
                 post_id: row.post.id,
                 post_url: `${ORIGIN}/posts/${row.post.id}`,
@@ -1400,6 +1425,7 @@ export function apply(ctx, rawConfig = {}) {
           const tagQueries = group.tags.slice(0, 4)
           const perTagWeight = ((weights[group.key] ?? 0) / totalWeight) / tagQueries.length
           const seenInGroup = new Set()
+          let dedupedPostCount = 0
           const tagStats = []
           for (const tag of tagQueries) {
             let rows
@@ -1412,8 +1438,12 @@ export function apply(ctx, rawConfig = {}) {
             const data = onlyImages(rows)
             tagStats.push({ tag, posts: data.length })
             for (const post of data) {
-              if (seenInGroup.has(post.id)) continue
-              seenInGroup.add(post.id)
+              const cluster = visualClusterKey(post)
+              if (seenInGroup.has(cluster)) {
+                dedupedPostCount += 1
+                continue
+              }
+              seenInGroup.add(cluster)
               const threeD = isThreeDPost(post)
               for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
                 const entry = standing.get(name) ?? { name, score: 0, posts: 0, three_d: 0, dimensions: {} }
@@ -1425,7 +1455,7 @@ export function apply(ctx, rawConfig = {}) {
               }
             }
           }
-          groupStats.push({ key: group.key, tags: tagStats })
+          groupStats.push({ key: group.key, tags: tagStats, unique_clusters: seenInGroup.size, deduped_posts: dedupedPostCount })
         }
 
         const candidates = [...standing.values()]
@@ -1459,7 +1489,8 @@ export function apply(ctx, rawConfig = {}) {
               const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
               const preferred = photoRows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
               const expressionOnly = photoRows.filter((row) => hasRequired(row))
-              const picked = (preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : photoRows.length > 0 ? photoRows : rows).slice(0, exampleCount)
+              const pool = preferred.length > 0 ? preferred : expressionOnly.length > 0 ? expressionOnly : photoRows.length > 0 ? photoRows : rows
+              const picked = dedupeByCluster(pool).slice(0, exampleCount)
               candidate.examples = picked.map((row) => ({
                 post_id: row.post.id,
                 post_url: `${ORIGIN}/posts/${row.post.id}`,
@@ -1481,7 +1512,8 @@ export function apply(ctx, rawConfig = {}) {
           weights,
           groups: groupStats,
           candidates,
-          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
+          dedupe: { method: 'near-duplicate cluster (parent_id / md5)', groups: groupStats.map((group) => ({ key: group.key, unique_clusters: group.unique_clusters, deduped_posts: group.deduped_posts })) },
+          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). Near-duplicate variants (same parent post or md5) are collapsed into one visual cluster so a variant set does not stack evidence, and examples are drawn from distinct clusters. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
         })
       },
     },
@@ -1516,6 +1548,7 @@ export function apply(ctx, rawConfig = {}) {
         const byArtist = new Map()
         const allPosts = new Map()
         const tagStats = []
+        let dedupedPostCount = 0
         const tagsToQuery = preset.slice(0, 2)
         for (const tag of tagsToQuery) {
           const baseParts = [tag, year ? yearTag(year) : '', rating !== 'all' ? `rating:${rating}` : ''].filter(Boolean)
@@ -1529,8 +1562,12 @@ export function apply(ctx, rawConfig = {}) {
           const photos = onlyImages(rows).filter((post) => !isThreeDPost(post))
           tagStats.push({ tag, posts: photos.length })
           for (const post of photos) {
+            const cluster = visualClusterKey(post)
+            if (allPosts.has(cluster)) {
+              dedupedPostCount += 1
+              continue
+            }
             const postId = post.id
-            if (allPosts.has(postId)) continue
             const favorites = Number(post.fav_count) || 0
             const reference = {
               post_id: postId,
@@ -1541,7 +1578,7 @@ export function apply(ctx, rawConfig = {}) {
               score: Number(post.score) || 0,
               rating: post.rating ?? null,
             }
-            allPosts.set(postId, { ...reference, post })
+            allPosts.set(cluster, { ...reference, post })
             for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
               const entry = byArtist.get(name) ?? { name, posts: 0, total: 0, refs: [] }
               entry.posts += 1
@@ -1595,9 +1632,10 @@ export function apply(ctx, rawConfig = {}) {
           sample,
           scanned: tagStats,
           scanned_posts: allPosts.size,
+          deduped_posts: dedupedPostCount,
           artists,
           posts,
-          note: 'Artists are ranked by favorites of posts carrying the part-focus tag(s); parts are tagged, so a good part drawing without the focus tag is missed. Confirm the part rendering visually before deciding.',
+          note: 'Artists are ranked by favorites of posts carrying the part-focus tag(s); parts are tagged, so a good part drawing without the focus tag is missed. Near-duplicate variants (same parent/md5) are collapsed into one visual cluster before counting. Confirm the part rendering visually before deciding.',
         }
       },
     },
