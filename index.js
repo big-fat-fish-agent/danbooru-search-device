@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.15.0'
+const VERSION = '0.15.1'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -234,6 +234,9 @@ function normalizeConfig(raw) {
   return {
     userAgent,
     minIntervalMs: clamp(input.minIntervalMs ?? process.env.DANBOORU_MIN_INTERVAL_MS, 200, 60_000, 1100),
+    // Logged-in requests may run faster: Danbooru allows up to ~10 requests/second for
+    // authenticated clients, so 2.5/s keeps a 4x safety margin while cutting wall time ~2.7x.
+    minIntervalMsAuthenticated: clamp(input.minIntervalMsAuthenticated ?? process.env.DANBOORU_MIN_INTERVAL_AUTH_MS, 200, 60_000, 400),
     timeoutMs: clamp(input.timeoutMs, 2_000, 120_000, 20_000),
     cacheTtlMs: clamp(input.cacheTtlMs, 0, 86_400_000, 600_000),
     defaultRating: ['g', 's', 'q', 'e', 'all'].includes(input.defaultRating) ? input.defaultRating : 'all',
@@ -252,13 +255,15 @@ function abortError() {
   return new Error('Danbooru request aborted')
 }
 
-/** One serialized gate so concurrent tool calls cannot exceed Danbooru's rate limit. */
-function createGate(intervalMs) {
+/** One serialized gate so concurrent tool calls cannot exceed Danbooru's rate limit.
+ * `getInterval` is read at each reservation, so the spacing can follow the auth state
+ * (logged-in requests use the faster interval; anonymous requests keep the safe one). */
+function createGate(getInterval) {
   let lastStart = 0
   let chain = Promise.resolve()
   return function reserve() {
     const slot = chain.then(async () => {
-      const wait = lastStart + intervalMs - Date.now()
+      const wait = lastStart + getInterval() - Date.now()
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
       lastStart = Date.now()
     })
@@ -304,7 +309,7 @@ function httpMessage(status, path, bodyText, authenticated = false) {
     : `Danbooru rejected the request (401).${suffix}`
   if (status === 403) return `Danbooru refused the request (403). It asks for a descriptive User-Agent; set DANBOORU_USER_AGENT (for example "MyBot/1.0 (user #12345)").${suffix}`
   if (status === 404) return `Danbooru returned 404 for ${path}.${suffix}`
-  if (status === 429) return `Danbooru rate limit reached (429); the plugin already spaces request starts about 1s apart, so wait a moment and retry.${suffix}`
+  if (status === 429) return `Danbooru rate limit reached (429); the plugin spaces request starts 0.4–1.1 s apart (faster when logged in), so wait a moment and retry.${suffix}`
   if (status === 422) return authenticated
     ? `Danbooru rejected the tag query (422) for the logged-in account; the server states the current tag cap, so remove tags to fit it.${suffix}`
     : `Danbooru could not run the query (422). Anonymous searches accept at most 2 tags; save credentials with danbooru_save_credentials for one more.${suffix}`
@@ -312,7 +317,8 @@ function httpMessage(status, path, bodyText, authenticated = false) {
 }
 
 function createClient(config, credentials) {
-  const reserve = createGate(config.minIntervalMs)
+  let currentIntervalMs = config.minIntervalMs
+  const reserve = createGate(() => currentIntervalMs)
   const cache = createCache(config.cacheTtlMs)
 
   /** Stored credential first, launch environment second; an empty value is absent. */
@@ -356,6 +362,8 @@ function createClient(config, credentials) {
       search.set('login', auth.login)
       search.set('api_key', auth.apiKey)
     }
+    // Authenticated clients get the faster gate (still ~4x under Danbooru's 10 req/s cap).
+    currentIntervalMs = auth.configured ? config.minIntervalMsAuthenticated : config.minIntervalMs
     const url = `${ORIGIN}${path}${search.size ? `?${search}` : ''}`
 
     for (let attempt = 0; ; attempt += 1) {

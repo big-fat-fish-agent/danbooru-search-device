@@ -13,7 +13,7 @@
 > 本插件是「查询搬砖工」，不是内容提供者；它只负责把 Danbooru 的公开检索结果搬过来。
 
 1. **版权归属**：所有作品与数据来自 Danbooru 公开 API，版权归各画师、权利人与 Danbooru 所有；本项目不存储、不转售、不再分发任何图片。
-2. **使用范围**：仅供个人学习、研究与 AI 绘画提示词参考；请遵守 Danbooru 服务条款与当地法律。插件已内置 1.1 秒串行限速——别拿它去 D 站刷屏，被限流了自己改 `minIntervalMs` 冷静一下。
+2. **使用范围**：仅供个人学习、研究与 AI 绘画提示词参考；请遵守 Danbooru 服务条款与当地法律。插件内置串行限速：**匿名 1.1 秒 / 登录后 0.4 秒**（仍远低于 D 站约 10 次/秒上限）——别拿它去 D 站刷屏，被限流了自己改 `minIntervalMs` 冷静一下。
 3. **凭据安全**：API key 只存在你本机的 DSH 凭据库（owner-only），插件不收集、不上传、不打印、不写进缓存/仓库/发布包。
 4. **结果不保证**：检索是 tag 频率/收藏数的启发式，可能不准、可能过时、可能「过于写实/有点 3D」——这属于正常波动，不是插件在针对你。
 5. **侵权处理**：如果你是权利人或发现误标，欢迎提 issue 或联系作者；我们会在跑路之前先配合下架/修正（顺序很重要）。
@@ -250,8 +250,8 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.15.0 (DeepSeek Harness; <contact>)`。
-- 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.15.1 (DeepSeek Harness; <contact>)`。
+- 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
 
@@ -262,7 +262,8 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `contact` | 空 | 加进 User-Agent 的身份说明，建议填 `user #12345` 或邮箱 |
-| `minIntervalMs` | `1100` | 两次请求启动的最小间隔（毫秒） |
+| `minIntervalMs` | `1100` | 匿名请求的启动间隔（毫秒） |
+| `minIntervalMsAuthenticated` | `400` | 已保存凭据时的启动间隔（毫秒），必须小于站点限速 |
 | `timeoutMs` | `20000` | 单请求超时 |
 | `cacheTtlMs` | `600000` | 内存缓存寿命；`0` 关闭缓存 |
 | `defaultRating` | `all` | 默认分级；`all` 含 R18，`g` 只看全年龄 |
@@ -277,6 +278,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 | `DANBOORU_USER_AGENT` | 完整覆盖 User-Agent（仍要保留可识别身份） |
 | `DANBOORU_CONTACT` | 等同 `contact` 配置项 |
 | `DANBOORU_MIN_INTERVAL_MS` | 等同 `minIntervalMs` |
+| `DANBOORU_MIN_INTERVAL_AUTH_MS` | 等同 `minIntervalMsAuthenticated` |
 
 改 `config` 需要改本目录的 `cordis.patch.yml` 并重装 bundle；改环境变量则重启 DSH 即可。
 
@@ -307,6 +309,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.15.1**：性能优化——登录后自动使用 0.4 秒限速间隔（匿名仍 1.1 秒），多请求工具整体快约 2–2.7 倍（实测 12 请求的 `year_artists` 12.8s → 6.4s）；新增 `minIntervalMsAuthenticated` / `DANBOORU_MIN_INTERVAL_AUTH_MS`；其他行为、输出与排序不变
 - **0.15.0**：借鉴以图搜图的「近重复聚类」——以 `parent_id`/`md5` 把同一张画的不同变体（改色、裁切、variant 帖）归为一个视觉簇；`artists_from_image` 按簇去重后再聚合证据，例图只取不同簇；`part_specialists` 也按簇折叠重复图；输出增加 `dedupe` 与每组 `unique_clusters` / `deduped_posts`
 - **0.14.0**：眼睛色彩从「人体附加参考」中移除；新增「整体色调参考」`color_tags` / `color_match` / `color_threshold`（`monochrome`、`limited_palette`、`pastel_colors`、`blue_theme`、`colorful`、`iridescent` 等），返回 `color.per_tag` 与 `color.best` 参考图
 - **0.13.0**：`danbooru_year_artists` 新增「人体附加参考」`appearance_tags` / `appearance_match` / `appearance_threshold`：在同一批核验作品上统计肤色、皮肤质感 tag（`per_tag` 命中数 + `ratio` + `appearance.best` 参考图），可只统计或按比例加闸门
