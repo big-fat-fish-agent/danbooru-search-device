@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.15.1'
+const VERSION = '0.15.2'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1387,7 +1387,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.30 > expression style 0.18 > rendering technique 0.20 > lineart 0.12 > color palette 0.08 > lighting 0.07 > general tags 0.05. mode="style": rendering technique 0.26 > lineart 0.18 > color palette 0.18 > lighting 0.14 > person style 0.14 > expression 0.05 > tags 0.05. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.24 > expression style 0.14 > rendering technique 0.24 > lineart 0.20 > color palette 0.07 > lighting 0.06 > general tags 0.05. mode="style": rendering technique 0.30 > lineart 0.26 > color palette 0.14 > lighting 0.12 > person style 0.10 > expression 0.03 > tags 0.05. Lineart and technique are deliberately weighted above the older defaults because they carry the "same drawing hand" signal. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
@@ -1408,9 +1408,11 @@ export function apply(ctx, rawConfig = {}) {
         const imageTags = parseTagList(args?.image_tags)
         if (imageTags.length === 0) throw new Error('image_tags is required')
         const mode = args?.mode === 'style' ? 'style' : 'person'
+        // Lineart and rendering technique carry more weight than the default split: they are
+        // what the eye reads as "same drawing hand" (line quality, shading/material treatment).
         const weights = mode === 'style'
-          ? { technique: 0.26, lineart: 0.18, color: 0.18, lighting: 0.14, person: 0.14, expression: 0.05, tag: 0.05 }
-          : { person: 0.3, expression: 0.18, technique: 0.2, lineart: 0.12, color: 0.08, lighting: 0.07, tag: 0.05 }
+          ? { technique: 0.3, lineart: 0.26, color: 0.14, lighting: 0.12, person: 0.1, expression: 0.03, tag: 0.05 }
+          : { person: 0.24, expression: 0.14, technique: 0.24, lineart: 0.2, color: 0.07, lighting: 0.06, tag: 0.05 }
         const year = parseYear(args?.year)
         const yearFilter = year ? ` ${yearTag(year)}` : ''
         const limit = clamp(args?.limit, 1, 25, 10)
