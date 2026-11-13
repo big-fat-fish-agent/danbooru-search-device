@@ -158,6 +158,10 @@ check('compact mode drops post references', styleArtists.artists.every((artist) 
 const defaultStyle = await call('danbooru_year_artists', { year: 2025, limit: 1, monthly_sample: 20, style_preset: 'fleshy', style_max_checks: 2 })
 check('style gate defaults to 5 percent with two required hits', defaultStyle.style_filter?.threshold === 0.05 && defaultStyle.style_filter?.min_hits === 2, JSON.stringify(defaultStyle.style_filter))
 
+const appearanceArtists = await call('danbooru_year_artists', { year: 2025, limit: 2, monthly_sample: 20, appearance_tags: 'blush', appearance_match: 'any', style_max_checks: 3, compact: true })
+check('appearance block measures skin/eye reference tags', Boolean(appearanceArtists.appearance_filter) && appearanceArtists.artists.length > 0 && appearanceArtists.artists.every((artist) => typeof artist.appearance?.ratio === 'number' && artist.appearance.ratio >= 0 && Array.isArray(artist.appearance?.best) && (artist.appearance.per_tag?.blush ?? -1) >= 0), JSON.stringify(appearanceArtists.artists[0]?.appearance ?? {}).slice(0, 300))
+check('appearance defaults to report-only without gating', appearanceArtists.appearance_filter?.threshold === 0 && appearanceArtists.appearance_filter?.match === 'any', JSON.stringify(appearanceArtists.appearance_filter))
+
 let yearRejected = false
 try {
   await call('danbooru_search_posts', { year: 1990, limit: 1 })

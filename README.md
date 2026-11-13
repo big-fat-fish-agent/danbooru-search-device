@@ -61,7 +61,7 @@
 |---|---|---|
 | `danbooru_search_posts` | 按 tag 搜索作品，返回按分类拆好的 tag 集与图片 URL；可加 `year` 限定年份、`order=score` 按热度 / `order=rank` 按 Hot 排序 | `tags`、`limit`(1–100)、`page`、`rating`、`year`、`order` |
 | `danbooru_top_artists` | **参考权重算法（HOT 优先）**：HOT 区权重 3 → 一周收藏增长权重 2 → 全年新图权重 1 | `year`(必填)、`tags`、`limit`、`sample`、`hot_sample`、`rising_sample`、`rating`、`weighting`、`rank_by`、`include_total` |
-| `danbooru_year_artists` | **整年总收藏算法（独立于 HOT）**：按月采样整年、按该年作品**总收藏数**降序排画师；默认 5% 体型 tag 闸门（只认体型 tag，不认构图） | `year`(必填)、`tags`、`rating`、`limit`、`monthly_sample`、`style_tags`、`style_preset`、`style_match`、`style_threshold`、`style_min_posts`、`style_min_hits`、`style_max_checks`、`compact` |
+| `danbooru_year_artists` | **整年总收藏算法（独立于 HOT）**：按月采样整年、按该年作品**总收藏数**降序排画师；默认 5% 体型 tag 闸门（只认体型 tag，不认构图）；可选加肤色/肤质/眼睛色彩的「人体附加参考」 | `year`(必填)、`tags`、`rating`、`limit`、`monthly_sample`、`style_tags`、`style_preset`、`style_match`、`style_threshold`、`style_min_posts`、`style_min_hits`、`style_max_checks`、`appearance_tags`、`appearance_match`、`appearance_threshold`、`compact` |
 | `danbooru_search_tags` | tag 自动补全：规范名、分类、作品数 | `query`、`category`、`limit` |
 | `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
@@ -133,6 +133,22 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - `compact=true`：只返回名字/总收藏/作品数/风格占比，不返回作品引用，适合批量看比例
 - 加了年份就只核验**该年份**的作品（`year` 本来就是必填）
 - 返回里每位画师带 `style: { tags, match, threshold, min_hits, checked_posts, hit_posts, ratio, pose_posts, best }`；`best` = 该画师**带风格 tag 的**最高收藏作品（最多 3 张），可直接点开参考（"优先看带 tag 的图"）；顶层 `style_filter` 说明核验几人、通过几人
+
+## 人体附加参考（肤色 / 皮肤质感 / 眼睛色彩）
+
+体型之外，`danbooru_year_artists` 还支持在**同一批核验作品**上统计额外的「人体参考」tag，不额外发请求：
+
+- `appearance_tags`：逗号/空格分隔，例如 `pale_skin, shiny_skin, red_eyes`
+  - 肤色：`pale_skin`、`dark_skin`、`tan`、`tanlines`、`grey_skin`、`blue_skin`…
+  - 皮肤质感：`shiny_skin`、`sweat`、`wet`、`oiled_skin`、`lotion`、`dimples_of_venus`…
+  - 眼睛色彩：`red_eyes`、`blue_eyes`、`yellow_eyes`、`green_eyes`、`purple_eyes`、`heterochromia`…
+- `appearance_match`：`any`（默认，命中任一即算）或 `all`（必须全中）
+- `appearance_threshold`：默认 0 = **只统计不淘汰**；传 0.1~0.3 这类比例才按「带参考 tag 的占比」加一道闸门
+- 返回里每位画师带 `appearance: { tags, match, threshold, checked_posts, hit_posts, ratio, per_tag, best }`
+  - `per_tag`：每个参考 tag 在核验作品里的命中数（比如 `shiny_skin: 6`）
+  - `best`：带参考 tag 的最高收藏作品（最多 3 张），可直接点开看肤色/肤质/眼睛颜色是否真的贴合
+- 顶层 `appearance_filter` 与 `style_filter` 并列，说明核验人数、通过人数
+- 典型用法：`style_preset="fleshy"` + `appearance_tags="pale_skin,shiny_skin,red_eyes"`，一次查询同时按「体型 + 肤色 + 肤质 + 眼睛颜色」给画师打分
 - 成本：基础每月 1 次请求 + 每核验 1 人 1 次请求（默认最多 40 次）
 
 ## 相似画师（tag 画像 + 表情画像）
@@ -210,7 +226,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.12.2 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.13.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**，默认间隔 1.1 秒；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -246,7 +262,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、表情画像与余弦、例图软规则、部位特化等 44 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、表情画像与余弦、例图软规则、部位特化等 46 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -267,6 +283,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.13.0**：`danbooru_year_artists` 新增「人体附加参考」`appearance_tags` / `appearance_match` / `appearance_threshold`：在同一批核验作品上统计肤色、皮肤质感、眼睛色彩 tag（`per_tag` 命中数 + `ratio` + `appearance.best` 参考图），可只统计或按比例加闸门
 - **0.12.2**：插件标题/介绍统一加 `DSH-` 前缀，并明确标注「DSH bundle，不是可独立运行的程序」
 - **0.12.1**：仓库转为公开；README 与插件介绍标注「AI 制作」；安装章节拆分为「下载包 / git clone + link / 源码 zip」三种方案；新增「宇宙免责声明」（跑路条款）
 - **0.12.0**：过滤/降权 3D 渲染（`3d`/`photorealistic`/`faux_3d`）：相似度降权 0.05、以图搜画师按 `three_d_share` 扣分、例图与部位图优先排除 3D
