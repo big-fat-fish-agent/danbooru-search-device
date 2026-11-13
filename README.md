@@ -189,23 +189,24 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 | 维度 | 说明 | `mode="person"` 权重 | `mode="style"` 权重 |
 |---|---|---|---|
-| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.24 | 0.10 |
-| `expression` 表情 | 表情 tag | 0.14 | 0.03 |
-| `technique` 绘制手法 | 材质/上色（`latex`、`shiny_clothes`…） | **0.24** | **0.30** |
-| `lineart` 线条 | 线稿粗细/有无/彩色线（`lineart`、`colored_lineart`…） | **0.20** | **0.26** |
-| `color` 色彩 | 主色/饱和度/多彩/虹彩（`colorful`、`iridescent`…） | 0.07 | 0.14 |
-| `lighting` 光照 | 逆光/斑驳光/镜头光（`dappled_sunlight`、`backlighting`…） | 0.06 | 0.12 |
-| `tag` 泛 tag | 其余描述 tag | 0.05 | 0.05 |
+| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.22 | 0.08 |
+| `expression` 表情 | 表情 tag | 0.12 | 0.02 |
+| `technique` 绘制手法 | 材质/上色（`latex`、`shiny_clothes`…） | **0.22** | **0.28** |
+| `lineart` 线条 | 线稿粗细/有无/彩色线（`lineart`、`colored_lineart`…） | **0.18** | **0.24** |
+| `clothing` 服装质感 | 材质 tag：`latex`、`leather`、`shiny_clothes`、`wet_clothes`、`see-through_clothes`、`lace`… | **0.10** | **0.12** |
+| `color` 色彩 | 主色/饱和度/多彩/虹彩（`colorful`、`iridescent`…） | 0.06 | 0.12 |
+| `lighting` 光照 | 逆光/斑驳光/镜头光（`dappled_sunlight`、`backlighting`…） | 0.05 | 0.10 |
+| `tag` 泛 tag | 其余描述 tag | 0.05 | 0.04 |
 
-> 线条与绘制手法的权重已上调（person 模式：lineart 0.12 → **0.20**、technique 0.20 → **0.24**；style 模式：lineart 0.18 → **0.26**、technique 0.26 → **0.30**）——它们才是「同一只手画出来的」最直接的信号。
+> 线条/绘制手法权重高于旧默认（person 模式 lineart 0.18、technique 0.22；style 模式 0.24 / 0.28），并新增 `clothing` **服装质感** 维度（0.10 / 0.12），专门吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 这类服装材质 tag——和 `technique`（皮肤/整体上色材质）分开计分。
 
-- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 色彩 → 光照 → 人物 → 表情 → tag
-- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 ≈ 绘制手法 → 线条 → 表情 → 色彩 → 光照 → tag
+- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 服装质感 ≈ 色彩 → 光照 → 人物 → 表情 → tag
+- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 ≈ 绘制手法 → 线条 → 表情 → 服装质感 → 色彩 → 光照 → tag
 - 每个维度**最多取 4 个 tag，逐个 tag 单独检索**（各 100 条，`order:score`）；同一维度内按帖子去重，再按画师出现频率加权累加
 - `year` 可选：**不填默认全时间**（不限年份），填了才按该年过滤
 - 成本：约 5–20 次请求（各组 tag 数之和，最多 4×7）+ `examples` 次
 - 用法：
-  `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
+  `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", clothing_tags="latex, shiny_clothes", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
 - 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
 
 ### 借鉴与放弃（对照 Google 以图搜图）
@@ -252,7 +253,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.15.2 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.16.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -290,7 +291,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法权重等 50 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装质感权重等 50 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -311,6 +312,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.16.0**：`artists_from_image` 新增 **服装质感** 维度 `clothing_tags`（person 0.10 / style 0.12，专吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 等材质 tag）；线条/手法权重微调（person 0.18/0.22、style 0.24/0.28），其余维度等比下调，总和仍为 1
 - **0.15.2**：加强线条与绘制手法的参考权重——`artists_from_image` person 模式 lineart 0.12→**0.20**、technique 0.20→**0.24**；style 模式 lineart 0.18→**0.26**、technique 0.26→**0.30**（其余维度等比下调，总和仍为 1）
 - **0.15.1**：性能优化——登录后自动使用 0.4 秒限速间隔（匿名仍 1.1 秒），多请求工具整体快约 2–2.7 倍（实测 12 请求的 `year_artists` 12.8s → 6.4s）；新增 `minIntervalMsAuthenticated` / `DANBOORU_MIN_INTERVAL_AUTH_MS`；其他行为、输出与排序不变
 - **0.15.0**：借鉴以图搜图的「近重复聚类」——以 `parent_id`/`md5` 把同一张画的不同变体（改色、裁切、variant 帖）归为一个视觉簇；`artists_from_image` 按簇去重后再聚合证据，例图只取不同簇；`part_specialists` 也按簇折叠重复图；输出增加 `dedupe` 与每组 `unique_clusters` / `deduped_posts`
