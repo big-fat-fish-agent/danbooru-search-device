@@ -21,6 +21,22 @@
 
 —— 祝调参愉快，收藏永涨 📈
 
+## 大致使用教程（截图版）
+
+> ⚠️ **这只是「大致教程」**：截图来自插件开发调试时的真实会话，仅演示「怎么提问 / 工具输出长什么样」，不是严格步骤文档；具体参数、年份和结果以实际查询为准。
+
+**① 以图搜画师：给它一张图，找画风相近的画师**
+
+![以图搜画师示例](docs/tutorial/01-image-to-artist.png)
+
+**② 按年份找「热门 + 色彩艳丽 + 人物油亮丰满」的作品**
+
+![年度色彩艳丽作品示例](docs/tutorial/02-year-colorful-posts.png)
+
+**③ 找「画风贴近某画师」且限定上传年份（2025）**
+
+![相似画师 + 年份限定示例](docs/tutorial/03-similar-artists-2025.png)
+
 ## 安装（DSH profile）
 
 本插件是 DSH bundle（纯 Host、零运行时依赖），以下三种方式任选其一。首次装完需重启 DSH；之后更新插件文件只需在 `plugin_manager` 里关→开热重载，不用重启。
@@ -253,7 +269,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.16.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.16.1 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -312,6 +328,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.16.1**：README 在「宇宙免责声明」与「安装」之间新增「大致使用教程（截图版）」三张示例图（以图搜画师 / 按年份找色彩艳丽作品 / 相似画师+年份限定），图片存于 `docs/tutorial/`
 - **0.16.0**：`artists_from_image` 新增 **服装质感** 维度 `clothing_tags`（person 0.10 / style 0.12，专吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 等材质 tag）；线条/手法权重微调（person 0.18/0.22、style 0.24/0.28），其余维度等比下调，总和仍为 1
 - **0.15.2**：加强线条与绘制手法的参考权重——`artists_from_image` person 模式 lineart 0.12→**0.20**、technique 0.20→**0.24**；style 模式 lineart 0.18→**0.26**、technique 0.26→**0.30**（其余维度等比下调，总和仍为 1）
 - **0.15.1**：性能优化——登录后自动使用 0.4 秒限速间隔（匿名仍 1.1 秒），多请求工具整体快约 2–2.7 倍（实测 12 请求的 `year_artists` 12.8s → 6.4s）；新增 `minIntervalMsAuthenticated` / `DANBOORU_MIN_INTERVAL_AUTH_MS`；其他行为、输出与排序不变
