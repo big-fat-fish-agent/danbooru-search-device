@@ -132,13 +132,13 @@ check('style match aggregates several reference characters', styleMatchMulti.anc
 const styleMatchLook = await call('danbooru_style_match', {
   character: 'firefly_(honkai:_star_rail)',
   style_tags: 'shiny_skin, sweat',
-  subject_tags: 'huge_breasts, dark_nipples',
+  subject_tags: 'white_hair, huge_breasts',
   genre_tags: 'sex, hetero',
   limit: 3,
   per_query: 30,
   examples: 0,
 })
-check('style mode ignores identity and ranks by the overall look', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && styleMatchLook.anchor_scans.some((scan) => scan.kind === 'style-top') && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null) && styleMatchLook.queries.some((query) => query.kind === 'style+subject'), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), queries: styleMatchLook.queries.map((query) => query.kind) }))
+check('style mode ignores identity and appearance features', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && styleMatchLook.reference.subject_tags_ignored === true && styleMatchLook.anchor_scans.every((scan) => scan.kind === 'style-top' || scan.kind === 'genre-top') && styleMatchLook.queries.every((query) => !/white_hair|huge_breasts/.test(String(query.tags))) && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), queries: styleMatchLook.queries.map((query) => query.tags) }))
 
 const styleMatchSmall = await call('danbooru_style_match', {
   style_tags: 'shiny_skin',
