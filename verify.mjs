@@ -163,6 +163,15 @@ const styleMatchSeed = await call('danbooru_style_match', {
 })
 check('style match forces explicit seed artists into the result', styleMatchSeed.candidates.some((candidate) => candidate.name === 'eigaka' && candidate.seed_artist === true && typeof candidate.artist_posts === 'number' && candidate.artist_posts >= 50), JSON.stringify(styleMatchSeed.seed_artists))
 
+// Rejection memory: an artist passed in avoid_artists must stay out of later calls (so a new
+// requirement gets the next-best alternative), until it is explicitly restored or forgotten.
+await call('danbooru_style_match', { style_tags: 'shiny_skin', avoid_artists: 'hews', limit: 3, examples: 0, verify_same_character: false })
+const styleMatchSuppressed = await call('danbooru_style_match', { style_tags: 'shiny_skin', seed_artists: 'hews', limit: 6, examples: 0, verify_same_character: false })
+check('rejected artists stay out of later suggestions', !styleMatchSuppressed.candidates.some((candidate) => candidate.name === 'hews') && Array.isArray(styleMatchSuppressed.rejection_memory?.excluded_this_call) && styleMatchSuppressed.rejection_memory.excluded_this_call.includes('hews'), JSON.stringify(styleMatchSuppressed.rejection_memory))
+const styleMatchRestored = await call('danbooru_style_match', { style_tags: 'shiny_skin', seed_artists: 'hews', allow_rejected_artists: true, limit: 6, examples: 0, verify_same_character: false })
+check('allow_rejected_artists restores an artist for one call', styleMatchRestored.candidates.some((candidate) => candidate.name === 'hews'), JSON.stringify(styleMatchRestored.rejection_memory))
+await call('danbooru_style_match', { style_tags: 'shiny_skin', forget_artists: 'hews', limit: 2, examples: 0, verify_same_character: false })
+
 const posts = await call('danbooru_search_posts', { tags: 'hatsune_miku solo', limit: 3 })
 check('search_posts returns posts', posts.count > 0, JSON.stringify(posts).slice(0, 300))
 const first = posts.posts[0]

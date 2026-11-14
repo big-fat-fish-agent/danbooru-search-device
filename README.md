@@ -83,7 +83,7 @@
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
-| `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`subject_tags`(body_tags 的兼容别名) |
+| `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`allow_rejected_artists`、`forget_artists`、`clear_rejections`、`subject_tags`(body_tags 的兼容别名) |
 | `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
@@ -269,7 +269,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 - 画风优先：`danbooru_style_match(style_tags="shiny_skin, sweat, oiled_skin", body_tags="huge_breasts, dark_nipples, pale_skin", genre_tags="sex, hetero, cum", limit=12, examples=2)`
 - 角色模式（仅当必须同角色）：`danbooru_style_match(mode="character", character="firefly_(honkai:_star_rail)", style_tags="shiny_skin", genre_tags="sex")`
-- 迭代：上一轮看中的画师放进 `prefer_artists`、看错的放进 `avoid_artists`，再跑一次即可收敛
+- 迭代：上一轮看中的画师放进 `prefer_artists`、看错的放进 `avoid_artists`（会持久记住，后续不会再推荐它），再跑一次即可收敛
 - 成本：约 `1 + 6 + 2×limit + 少量例图` 次请求（默认约 30 次；匿名限速下约 30–40 秒）
 
 ### 小体量画师发现（0.21.0 起，0.22.0 补 `seed_artists`）
@@ -286,6 +286,25 @@ danbooru_style_match(style_tags="shiny_skin, sweat, lace, colored_lineart",
 - `min_artist_posts`（默认 50）过滤过小账号；`small_artist_slots`（默认 3）为小画师保留名额；候选带 `discovered_via_style_cooccurrence` / `artist_posts` / `small_artist` / `reserved_slot`。
 - `seed_artists` 可显式点名（如 `eigaka`）：先校验 ≥`min_artist_posts`，再抓其作品算 style/genre 吻合度，输出 `seed_artist` / `seed_style_overlap`，并强制进入最终名单。
 - 代价：共现每个 style tag +1 请求（最多 3 次）；每个 seed +2 请求（帖数 + 作品吻合度）。
+
+### 拒绝记忆与替代推荐（0.26.0 起）
+
+用户否掉的画师不该在后面的轮次里换着理由回来。`avoid_artists` 现在会**写入持久拒绝记忆**（插件实例内有效，DSH 重载后清空）：
+
+- 后续任何一次 `style_match` / `similar_artists` / `artists_from_image` / 共识调用，都会把记得的画师过滤掉，空出的名额由**下一个最接近的替代画师**补上——这就是「同一个效果、换一个不同画师」
+- 输出 `rejection_memory`：`remembered_artists`（记忆总数）、`excluded_this_call`（本次被滤掉的画师名）
+- `allow_rejected_artists=true`：仅本次忽略拒绝记忆（记忆仍保留，供你重新检查）
+- `forget_artists="hiten"`：从记忆里释放某个画师（改变主意时用）；`clear_rejections=true` 清空全部
+- 即使 `seed_artists` 点名了一个已拒绝的画师，也不会被强行加回来（拒绝优先）
+
+示例（对应「hiten 已被否掉，后面又要同一效果」的场景）：
+
+```text
+第 1 轮:  style_match(..., avoid_artists="hiten")         → hiten 被拒并记住
+第 N 轮:  style_match(style_tags="<hiten 同款效果>", ...)  → hiten 不再出现，返回下一个最接近的画师
+需要复看:  style_match(..., allow_rejected_artists=true)   → hiten 临时可见
+彻底放行:  style_match(..., forget_artists="hiten")        → hiten 可再次正常推荐
+```
 
 ### 多张参考图 / 多角色（0.18.0 起，仅 `mode="character"`）
 
@@ -359,7 +378,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.20.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.26.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -397,7 +416,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 62 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 64 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -418,6 +437,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.26.0**：新增**持久拒绝记忆与替代推荐**——`avoid_artists` 会记住被否的画师，后续轮次自动过滤，空出的名额由下一个最接近的画师补上（不再用同一个名字凑数）；`allow_rejected_artists` 仅本次忽略、`forget_artists` 释放单个、`clear_rejections` 清空；`style_match` / `similar_artists` / `artists_from_image` / 共识均生效，输出 `rejection_memory` / `rejected_excluded`；`verify.mjs` 增加 2 项自检（共 64 项）
 - **0.25.0**：`style_match` 引入 **`body_tags`（身体细节次级证据）**——体型/肤色/乳晕/肉感这类「身体细节的画法」是合法画风证据（不同画师差别极大），以 `style×body`、`body×genre` pair 与 `body_posts`/`body_share` 参与排序（画风模式权重 `0.38 锚点 + 0.15 pair + 0.15 画风核验 + 0.12 身体细节 + 0.08 共现 + 0.12 seed`）；同时**过滤身份/外貌 tag**（发色、瞳色、发型、饰品、服装名、角色名）并列入 `reference.rejected_body_tags`；`subject_tags` 改为 `body_tags` 的兼容别名；`verify.mjs` 改成断言「身体细节进入查询、发色被拒绝」；README 同步
 - **0.24.0**：`style_match` 初步**剔除外貌权重**——角色外貌（白毛/红瞳/服装）不再参与锚点、pair、核验与排序；style 模式锚点改为前两个 style tag（无 style 时退化为题材），pair 只保留 `画风×画风` / `画风×题材`；README 从 0.20.0 干净版本重建并补回 0.21–0.23 文档
 - **0.23.0**：`style_match` 改为**画风优先（style-first）**——默认 `mode="style"` **不使用角色 tag**（同角色≠同画风；实测旧的角色锚定漏掉 `nyantcha`/`merunyaa` 这类同手画师），`mode="character"` 才用角色锚点；pair 改为 `画风×画风`/`画风×题材`，核验改为 `画师×锚点画风 tag`（`style_posts`）；输出新增 `reference.mode` / `candidates[].style_posts`
