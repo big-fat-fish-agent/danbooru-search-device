@@ -291,11 +291,11 @@ danbooru_style_match(style_tags="shiny_skin, sweat, lace, colored_lineart",
 
 用户否掉的画师不该在后面的轮次里换着理由回来。`avoid_artists` 现在会**写入持久拒绝记忆**（插件实例内有效，DSH 重载后清空）：
 
-- 后续任何一次 `style_match` / `similar_artists` / `artists_from_image` / 共识调用，都会把记得的画师过滤掉，空出的名额由**下一个最接近的替代画师**补上——这就是「同一个效果、换一个不同画师」
-- 输出 `rejection_memory`：`remembered_artists`（记忆总数）、`excluded_this_call`（本次被滤掉的画师名）
+- 后续任何一次 `style_match` / `similar_artists` / `artists_from_image` / 共识调用，都会把记得的画师从**自动发现**里过滤掉，空出的名额由**下一个最接近的替代画师**补上——这就是「同一个效果、换一个不同画师」
+- **但点名即加回**：`seed_artists="hiten"` 会重新把该画师加进候选（用 `reinstated_from_rejection` / `rejection_memory.reinstated_this_call` 标记）——拒绝记忆只拦自动发现，不会彻底封死
+- 输出 `rejection_memory`：`remembered_artists`（记忆总数）、`excluded_this_call`（本次被自动过滤的画师名）、`reinstated_this_call`（本次点名加回的画师名）
 - `allow_rejected_artists=true`：仅本次忽略拒绝记忆（记忆仍保留，供你重新检查）
 - `forget_artists="hiten"`：从记忆里释放某个画师（改变主意时用）；`clear_rejections=true` 清空全部
-- 即使 `seed_artists` 点名了一个已拒绝的画师，也不会被强行加回来（拒绝优先）
 
 示例（对应「hiten 已被否掉，后面又要同一效果」的场景）：
 
@@ -378,7 +378,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.26.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.27.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -437,6 +437,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.27.0**：拒绝记忆的语义修正——**只拦自动发现，点名即加回**：`avoid_artists` 记住的画师仍会被自动检索过滤（换下一个最接近的替代者），但 `seed_artists` 显式点名时会重新加进候选并标记 `reinstated_from_rejection` / `rejection_memory.reinstated_this_call`；`allow_rejected_artists` / `forget_artists` / `clear_rejections` 行为不变；`verify.mjs` 断言同步为「自动过滤 + 点名加回」（共 64 项）
 - **0.26.0**：新增**持久拒绝记忆与替代推荐**——`avoid_artists` 会记住被否的画师，后续轮次自动过滤，空出的名额由下一个最接近的画师补上（不再用同一个名字凑数）；`allow_rejected_artists` 仅本次忽略、`forget_artists` 释放单个、`clear_rejections` 清空；`style_match` / `similar_artists` / `artists_from_image` / 共识均生效，输出 `rejection_memory` / `rejected_excluded`；`verify.mjs` 增加 2 项自检（共 64 项）
 - **0.25.0**：`style_match` 引入 **`body_tags`（身体细节次级证据）**——体型/肤色/乳晕/肉感这类「身体细节的画法」是合法画风证据（不同画师差别极大），以 `style×body`、`body×genre` pair 与 `body_posts`/`body_share` 参与排序（画风模式权重 `0.38 锚点 + 0.15 pair + 0.15 画风核验 + 0.12 身体细节 + 0.08 共现 + 0.12 seed`）；同时**过滤身份/外貌 tag**（发色、瞳色、发型、饰品、服装名、角色名）并列入 `reference.rejected_body_tags`；`subject_tags` 改为 `body_tags` 的兼容别名；`verify.mjs` 改成断言「身体细节进入查询、发色被拒绝」；README 同步
 - **0.24.0**：`style_match` 初步**剔除外貌权重**——角色外貌（白毛/红瞳/服装）不再参与锚点、pair、核验与排序；style 模式锚点改为前两个 style tag（无 style 时退化为题材），pair 只保留 `画风×画风` / `画风×题材`；README 从 0.20.0 干净版本重建并补回 0.21–0.23 文档

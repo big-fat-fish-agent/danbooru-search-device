@@ -163,11 +163,13 @@ const styleMatchSeed = await call('danbooru_style_match', {
 })
 check('style match forces explicit seed artists into the result', styleMatchSeed.candidates.some((candidate) => candidate.name === 'eigaka' && candidate.seed_artist === true && typeof candidate.artist_posts === 'number' && candidate.artist_posts >= 50), JSON.stringify(styleMatchSeed.seed_artists))
 
-// Rejection memory: an artist passed in avoid_artists must stay out of later calls (so a new
-// requirement gets the next-best alternative), until it is explicitly restored or forgotten.
+// Rejection memory: remembered rejects are filtered from AUTOMATIC discovery, but explicitly
+// naming one again (seed_artists) reinstates it — the memory is not a permanent block.
 await call('danbooru_style_match', { style_tags: 'shiny_skin', avoid_artists: 'hews', limit: 3, examples: 0, verify_same_character: false })
-const styleMatchSuppressed = await call('danbooru_style_match', { style_tags: 'shiny_skin', seed_artists: 'hews', limit: 6, examples: 0, verify_same_character: false })
-check('rejected artists stay out of later suggestions', !styleMatchSuppressed.candidates.some((candidate) => candidate.name === 'hews') && Array.isArray(styleMatchSuppressed.rejection_memory?.excluded_this_call) && styleMatchSuppressed.rejection_memory.excluded_this_call.includes('hews'), JSON.stringify(styleMatchSuppressed.rejection_memory))
+const rejectionSuppressed = await call('danbooru_image_artist_consensus', { lists: JSON.stringify(['hews,nyantcha', 'hews,asou']), min_hits: 2, examples: 0 })
+check('remembered rejections are filtered from automatic discovery', rejectionSuppressed.rejected_excluded.includes('hews') && !rejectionSuppressed.candidates.some((candidate) => candidate.name === 'hews'), JSON.stringify(rejectionSuppressed.rejected_excluded))
+const rejectionReinstated = await call('danbooru_style_match', { style_tags: 'shiny_skin', seed_artists: 'hews', limit: 6, examples: 0, verify_same_character: false })
+check('explicitly naming a rejected artist reinstates it', rejectionReinstated.candidates.some((candidate) => candidate.name === 'hews' && candidate.seed_artist === true) && Array.isArray(rejectionReinstated.rejection_memory?.reinstated_this_call) && rejectionReinstated.rejection_memory.reinstated_this_call.includes('hews'), JSON.stringify(rejectionReinstated.rejection_memory))
 const styleMatchRestored = await call('danbooru_style_match', { style_tags: 'shiny_skin', seed_artists: 'hews', allow_rejected_artists: true, limit: 6, examples: 0, verify_same_character: false })
 check('allow_rejected_artists restores an artist for one call', styleMatchRestored.candidates.some((candidate) => candidate.name === 'hews'), JSON.stringify(styleMatchRestored.rejection_memory))
 await call('danbooru_style_match', { style_tags: 'shiny_skin', forget_artists: 'hews', limit: 2, examples: 0, verify_same_character: false })

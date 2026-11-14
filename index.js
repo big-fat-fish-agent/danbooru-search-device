@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.26.0'
+const VERSION = '0.27.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1891,7 +1891,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_style_match',
-      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Identity/appearance attributes (hair colour, hairstyle, eye colour, ornaments, costume nouns, character tags) are ignored; BODY/DETAIL treatment tags (body build, skin colour/shading, areolae, proportions — body_tags) are used as secondary evidence because artists paint those details in very different ways. It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x body, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists that the top-score scans cannot reach (e.g. a 167-post account): they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate. Rejected artists are remembered: every name passed in avoid_artists stays excluded from later calls, so when a new requirement matches what a rejected artist could do, the next-best alternative is returned instead of re-adding them (allow_rejected_artists inspects one for a single call, forget_artists/clear_rejections release names).',
+      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Identity/appearance attributes (hair colour, hairstyle, eye colour, ornaments, costume nouns, character tags) are ignored; BODY/DETAIL treatment tags (body build, skin colour/shading, areolae, proportions — body_tags) are used as secondary evidence because artists paint those details in very different ways. It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x body, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists that the top-score scans cannot reach (e.g. a 167-post account): they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate. Rejected artists are remembered: names passed in avoid_artists are excluded from AUTOMATIC discovery in later calls (next-best alternatives fill their slots), but explicitly naming one again in seed_artists reinstates it (reinstated_from_rejection marks that) — the memory never permanently blocks a direct request; allow_rejected_artists ignores the memory for one call, forget_artists/clear_rejections release names.',
       parameters: parameters({
         mode: { type: 'string', enum: ['style', 'character'], description: 'style (default): rank artists by the overall look — rendering, palette and the kind of character depicted; character identity is not used. character: anchor on character tags instead, only when the same character must appear.' },
         style_tags: { type: 'string', description: 'Primary evidence: rendering/technique tags for line, shading, palette, lighting, material, e.g. "colored_lineart, soft_shading, shiny_skin, latex". The first two tags become the anchor scans.' },
@@ -2139,10 +2139,7 @@ export function apply(ctx, rawConfig = {}) {
         const seedReport = []
         for (const seedName of seedArtists) {
           if (avoid.has(seedName)) continue
-          if (isRejected(seedName)) {
-            seedReport.push({ name: seedName, included: false, reason: 'remembered rejection (use allow_rejected_artists=true to inspect, or forget_artists to release)' })
-            continue
-          }
+          const reinstated = rejectionMemory.artists.has(seedName)
           let artistPosts = null
           try {
             const tagRows = await request('/tags.json', { 'search[name]': seedName, limit: 1 }, { signal: exec?.signal, ttlMs: TTL.tags })
@@ -2168,7 +2165,7 @@ export function apply(ctx, rawConfig = {}) {
             // Seed verification is best-effort; the artist still enters with its tag-count evidence.
           }
           seedScores.set(seedName, { score: sampled > 0 ? overlap / sampled : 0, posts: artistPosts })
-          seedReport.push({ name: seedName, artist_posts: artistPosts, sampled_posts: sampled, style_overlap: sampled > 0 ? round(overlap / sampled, 2) : null, included: true })
+          seedReport.push({ name: seedName, artist_posts: artistPosts, sampled_posts: sampled, style_overlap: sampled > 0 ? round(overlap / sampled, 2) : null, included: true, reinstated_from_rejection: reinstated })
         }
         for (const [name, info] of seedScores) {
           const entry = standing.get(name) ?? { name, anchorScore: 0, pairScore: 0, hits: 0, kinds: [], samples: [] }
@@ -2195,10 +2192,11 @@ export function apply(ctx, rawConfig = {}) {
           .filter((entry) => entry.kinds.length === 1 && entry.kinds[0] === EXPANSION_KIND)
           .sort((left, right) => (right.expansionScore ?? 0) - (left.expansionScore ?? 0))
         const seedEntries = ranked.filter((entry) => entry.kinds.includes('seed-artist'))
-        // Remembered rejections are removed before slicing, so the vacated slots are taken by the
-        // next-best alternative artists (that is the "same effect, different artist" behaviour).
+        // Explicitly named seeds are reinstated even when remembered as rejected: the memory only
+        // blocks automatic discovery, never a direct "this one" from the caller.
+        const seededNames = new Set(seedEntries.map((entry) => entry.name))
         const eligible = (entry) => {
-          if (isRejected(entry.name)) {
+          if (!seededNames.has(entry.name) && isRejected(entry.name)) {
             memoryExcluded.add(entry.name)
             return false
           }
@@ -2268,10 +2266,10 @@ export function apply(ctx, rawConfig = {}) {
         const reserved = reservedPool.filter((row) => !finalists.includes(row)).slice(0, Math.max(0, limit - finalists.length))
         const reservedNames = new Set(reserved.map((row) => row.entry.name))
         const finalistRows = [...finalists, ...reserved].sort((left, right) => right.score - left.score || right.entry.hits - left.entry.hits || left.entry.name.localeCompare(right.entry.name))
-        // Explicit seeds are forced in regardless of score: the caller named them on purpose.
-        // Remembered rejections still win — a rejected artist is not re-added by seeding it again.
+        // Explicit seeds are forced in regardless of score: the caller named them on purpose, which
+        // also reinstates a remembered-but-rejected artist (memory blocks auto-discovery only).
         for (const row of scored) {
-          if (row.entry.kinds.includes('seed-artist') && !isRejected(row.entry.name) && !finalistRows.includes(row)) finalistRows.push(row)
+          if (row.entry.kinds.includes('seed-artist') && !finalistRows.includes(row)) finalistRows.push(row)
         }
 
         // Samples: same-character works first (strongest evidence), then posts collected by the
@@ -2352,13 +2350,11 @@ export function apply(ctx, rawConfig = {}) {
           rejection_memory: {
             applied: !allowRejected,
             remembered_artists: rejectionMemory.artists.size,
-            excluded_this_call: [...new Set([
-              ...memoryExcluded,
-              ...seedReport.filter((row) => row.included === false && String(row.reason ?? '').includes('remembered rejection')).map((row) => row.name),
-            ])],
+            excluded_this_call: [...new Set([...memoryExcluded])],
+            reinstated_this_call: seedReport.filter((row) => row.reinstated_from_rejection).map((row) => row.name),
             note: allowRejected
               ? 'allow_rejected_artists=true: remembered rejections are ignored for this call only; they stay in memory.'
-              : 'Artists you rejected earlier ("not this one") are filtered out here, so the slots go to the next-best alternative achieving the same look instead of re-adding them. Use allow_rejected_artists=true to inspect one again, forget_artists="name" to release it, or clear_rejections=true to wipe the memory (it also resets on DSH plugin reload).',
+              : 'Remembered rejections are filtered from automatic discovery, so the slots go to the next-best alternative instead of re-adding them automatically. Explicit naming still wins: pass the artist in seed_artists (or allow_rejected_artists=true) to reinstate it. forget_artists="name" releases a name, clear_rejections=true wipes the memory (it also resets on DSH plugin reload).',
           },
           verify: {
             checklist: STYLE_MATCH_CHECKLIST,
