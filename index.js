@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.24.0'
+const VERSION = '0.25.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -213,20 +213,30 @@ const IMAGE_SEARCH_WEIGHTS = {
 
 /**
  * Whole-look artist matching. Only drawing-hand evidence may influence the ranking: line work,
- * shading, palette, lighting, material/rendering technique — plus the scene type (genre) as weak
- * context. Character identity AND character appearance features (hair colour, eye colour, skin,
- * body build, costume) are deliberately excluded: an artist who draws many white-haired characters
- * is not thereby the right hand, and an artist who never drew white hair can still match the look.
- * Character tags are used only in character mode, when the identity itself is the request.
+ * shading, palette, lighting, material/rendering technique — plus two secondary signals: the scene
+ * type (genre) as weak context, and BODY/DETAIL treatment tags (body build, skin colour/shading,
+ * areolae, proportions). Body tags are legitimate evidence because artists paint those details in
+ * very different ways; hair colour, eye colour, ornaments, costume nouns and character tags are NOT
+ * (an artist who draws many white-haired characters is not thereby the right hand) and are rejected
+ * before scoring. Character tags are used only in character mode, when the identity is the request.
  */
 const STYLE_MATCH_KIND_WEIGHTS = {
   'character+genre': 1,
   'character+style': 0.9,
   'style+style': 0.8,
+  'style+body': 0.7,
   'style+genre': 0.6,
+  'body+genre': 0.5,
   style: 0.55,
+  body: 0.45,
   genre: 0.4,
 }
+/** Fraction of an artist's sampled posts carrying body tags at which body evidence saturates. */
+const STYLE_MATCH_BODY_SATURATION = 0.6
+/** Hairstyle tags that describe appearance rather than body treatment. */
+const HAIRSTYLE_TAG_PATTERN = /(?:^|_)(?:hair|hairstyle|long_hair|short_hair|medium_hair|bangs|ahoge|ponytail|twintails|braid|hime_cut|hairbun|mohawk|undercut|perm)$/
+/** True when a body/detail tag is body treatment (allowed), not identity/appearance (rejected). */
+const isBodyTreatmentTag = (tag) => !tag.includes('(') && !isIdentityTag(tag) && !HAIRSTYLE_TAG_PATTERN.test(tag)
 const STYLE_MATCH_MAX_PAIRS = 6
 /** Post count at which identity evidence (character mode) saturates (log scale). */
 const STYLE_MATCH_CHARACTER_SATURATION = 40
@@ -1849,11 +1859,12 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_style_match',
-      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character and does NOT use character appearance: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Hair colour, eye colour, skin tone, body build and costume are appearance, not drawing evidence, and are ignored for ranking (subject_tags is accepted only for backward compatibility). It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists that the top-score scans cannot reach (e.g. a 167-post account): they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate.',
+      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Identity/appearance attributes (hair colour, hairstyle, eye colour, ornaments, costume nouns, character tags) are ignored; BODY/DETAIL treatment tags (body build, skin colour/shading, areolae, proportions — body_tags) are used as secondary evidence because artists paint those details in very different ways. It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x body, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists that the top-score scans cannot reach (e.g. a 167-post account): they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate.',
       parameters: parameters({
         mode: { type: 'string', enum: ['style', 'character'], description: 'style (default): rank artists by the overall look — rendering, palette and the kind of character depicted; character identity is not used. character: anchor on character tags instead, only when the same character must appear.' },
-        style_tags: { type: 'string', description: 'Rendering/technique tags: line, shading, palette, lighting, material, e.g. "colored_lineart, soft_shading, shiny_skin, latex". The ONLY evidence that may influence artist ranking; the first tag becomes the anchor scan.' },
-        subject_tags: { type: 'string', description: 'Accepted for backward compatibility but IGNORED for ranking. Character appearance (hair colour, eye colour, skin, body build, costume) must not influence artist search: an artist who draws many white-haired characters is not therefore the right hand. Keep those tags in the image prompt instead. Returned only as reference.subject_tags with subject_tags_ignored=true.' },
+        style_tags: { type: 'string', description: 'Primary evidence: rendering/technique tags for line, shading, palette, lighting, material, e.g. "colored_lineart, soft_shading, shiny_skin, latex". The first two tags become the anchor scans.' },
+        body_tags: { type: 'string', description: 'Secondary evidence: BODY/DETAIL treatment tags — body build, skin colour/shading, areolae, proportions, e.g. "huge_breasts, dark_nipples, pale_skin, thick_thighs". Allowed because artists paint these details in very different ways. Identity/appearance attributes are rejected here (hair colour, hairstyle, eye colour, ornaments, garment nouns, character tags) and listed in reference.rejected_body_tags.' },
+        subject_tags: { type: 'string', description: 'Deprecated alias of body_tags (kept for compatibility). Same filter: body/detail treatment tags pass, hair/eye/costume/character tags are rejected into reference.rejected_body_tags.' },
         genre_tags: { type: 'string', description: 'Comma-separated scene/act tags, e.g. "sex, hetero, cum, bed".' },
         character: { type: 'string', description: 'Character tag or comma-separated list (up to 3). Only used in mode="character"; ignored in the default style mode on purpose — an artist who drew this character is not automatically the right style.' },
         year: { type: 'integer', minimum: 2005, description: 'Only sample posts published in this calendar year. Without credentials the date tag may not fit the anonymous tag budget, so the filter can fall back to client-side filtering (reported in the result).' },
@@ -1879,14 +1890,25 @@ export function apply(ctx, rawConfig = {}) {
           : []
         const character = characters[0] ?? ''
         const styleTags = [...new Set(parseTagList(args?.style_tags).map(artistKey))].filter((tag) => tag && !tag.includes(':')).slice(0, 5)
-        // Appearance tags are reported for transparency but never scored (see the comment on
-        // STYLE_MATCH_KIND_WEIGHTS): they describe who is in the picture, not the drawing hand.
-        const subjectTags = [...new Set(parseTagList(args?.subject_tags).map(artistKey))].filter((tag) => tag && !tag.includes(':')).slice(0, 5)
+        // Body/detail treatment tags are secondary evidence (artists paint bodies very differently);
+        // identity/appearance attributes are rejected so the search cannot drift into "artists who
+        // draw many white-haired characters".
+        const bodyTagInput = [...parseTagList(args?.body_tags), ...parseTagList(args?.subject_tags)].map(artistKey)
+        const bodyTags = []
+        const rejectedBodyTags = []
+        for (const tag of bodyTagInput) {
+          if (!tag || tag.includes(':')) continue
+          if (isBodyTreatmentTag(tag)) {
+            if (bodyTags.length < 5 && !bodyTags.includes(tag)) bodyTags.push(tag)
+          } else if (!rejectedBodyTags.some((row) => row.tag === tag)) {
+            rejectedBodyTags.push({ tag, reason: 'identity/appearance attribute (hair colour, hairstyle, eye colour, ornament, garment or character tag), not body treatment' })
+          }
+        }
         const genreTags = [...new Set(parseTagList(args?.genre_tags).map(artistKey))].filter((tag) => tag && !tag.includes(':')).slice(0, 5)
-        if (styleTags.length === 0 && genreTags.length === 0 && characters.length === 0) {
+        if (styleTags.length === 0 && bodyTags.length === 0 && genreTags.length === 0 && characters.length === 0) {
           throw new Error(mode === 'character'
             ? 'mode="character" needs at least one character tag'
-            : 'Provide at least one of style_tags or genre_tags; character appearance tags (subject_tags) do not influence the ranking')
+            : 'Provide at least one of style_tags, body_tags or genre_tags; identity/appearance tags (hair, eye colour, costume) are rejected')
         }
         const year = parseYear(args?.year)
         const rating = ['g', 's', 'q', 'e', 'all'].includes(args?.rating) ? args.rating : config.defaultRating
@@ -1920,18 +1942,25 @@ export function apply(ctx, rawConfig = {}) {
             if (styleTags[0]) addPair([characters[1], styleTags[0]], 'character+style')
           }
         }
-        // Style-first pair plan: rendering x rendering, rendering x scene. No character identity and
-        // no character appearance involved.
+        // Pair plan: rendering x rendering, rendering x body-detail treatment, rendering x scene,
+        // body-detail treatment x scene. Identity/appearance tags never appear here.
         for (let index = 0; index + 1 < styleTags.length; index += 2) addPair([styleTags[index], styleTags[index + 1]], 'style+style')
+        if (styleTags.length > 0 && bodyTags.length > 0) {
+          addPair([styleTags[0], bodyTags[0]], 'style+body')
+          const secondStyle = styleTags[1] ?? styleTags[0]
+          const secondBody = bodyTags[1] ?? bodyTags[0]
+          if (secondStyle !== styleTags[0] || secondBody !== bodyTags[0]) addPair([secondStyle, secondBody], 'style+body')
+        }
         if (styleTags.length > 0 && genreTags.length > 0) {
           addPair([styleTags[0], genreTags[0]], 'style+genre')
           const secondStyle = styleTags[1] ?? styleTags[0]
           const secondGenre = genreTags[1] ?? genreTags[0]
           if (secondStyle !== styleTags[0] || secondGenre !== genreTags[0]) addPair([secondStyle, secondGenre], 'style+genre')
         }
+        if (bodyTags.length > 0 && genreTags.length > 0) addPair([bodyTags[0], genreTags[0]], 'body+genre')
         if (pairs.length === 0) {
-          const fallback = styleTags[0] || genreTags[0] || character
-          addPair([fallback], styleTags.length > 0 ? 'style' : genreTags.length > 0 ? 'genre' : 'character')
+          const fallback = styleTags[0] || bodyTags[0] || genreTags[0] || character
+          addPair([fallback], styleTags.length > 0 ? 'style' : bodyTags.length > 0 ? 'body' : genreTags.length > 0 ? 'genre' : 'character')
         }
 
         const fetchRows = async (tokens, sampleLimit, options = {}) => {
@@ -1966,12 +1995,14 @@ export function apply(ctx, rawConfig = {}) {
 
         const standing = new Map()
         const recordArtists = (post, weight, kind, source) => {
+          const bodyHit = bodyTags.length > 0 && postHasStyle(post, bodyTags, false)
           for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
             if (avoid.has(artistKey(name))) continue
-            const entry = standing.get(name) ?? { name, anchorScore: 0, pairScore: 0, hits: 0, kinds: [], samples: [] }
+            const entry = standing.get(name) ?? { name, anchorScore: 0, pairScore: 0, hits: 0, bodyHits: 0, kinds: [], samples: [] }
             if (source === 'anchor') entry.anchorScore += weight
             else entry.pairScore += weight
             entry.hits += 1
+            if (bodyHit) entry.bodyHits += 1
             if (!entry.kinds.includes(kind)) entry.kinds.push(kind)
             if (entry.samples.length < exampleCount + 1) entry.samples.push(post)
             standing.set(name, entry)
@@ -1985,16 +2016,15 @@ export function apply(ctx, rawConfig = {}) {
         // well-known artist whose few works of this character score highest.
         const anchorScans = []
         const chartTop = new Set()
-        // Style mode anchors on the top style tag plus the top subject tag; character mode anchors on
-        // the characters. In style mode the anchors are the first two style tags (never appearance
-        // tags); with no style tag at all, the first genre tag is the only remaining context anchor.
+        // Style mode anchors on the first two style tags; only when no style tag is given does it
+        // fall back to the top body tag (or the top genre tag). In character mode the characters anchor.
         const anchorTags = mode === 'character'
           ? characters.slice(0, 2)
-          : [...new Set([styleTags[0], styleTags[1], genreTags[0]].filter(Boolean))].slice(0, 2)
+          : [...new Set([styleTags[0], styleTags[1], styleTags.length === 0 ? (bodyTags[0] ?? genreTags[0]) : null].filter(Boolean))].slice(0, 2)
         for (const anchorTag of anchorTags) {
-          const anchorKind = mode === 'character' ? 'character-top' : (styleTags.includes(anchorTag) ? 'style-top' : 'genre-top')
+          const anchorKind = mode === 'character' ? 'character-top' : (styleTags.includes(anchorTag) ? 'style-top' : bodyTags.includes(anchorTag) ? 'body-top' : 'genre-top')
           const rows = dedupeByCluster((await fetchRows([anchorTag], 200, { orderScore: true })).map((post) => ({ post })))
-          const tagPool = [...styleTags, ...genreTags].filter((tag) => tag !== anchorTag)
+          const tagPool = [...styleTags, ...bodyTags, ...genreTags].filter((tag) => tag !== anchorTag)
           let matchedRows = 0
           for (let index = 0; index < rows.length; index += 1) {
             const row = rows[index]
@@ -2158,6 +2188,8 @@ export function apply(ctx, rawConfig = {}) {
           const characterScore = sameCharacter === null ? 0 : Math.min(1, Math.log10(1 + sameCharacter) / Math.log10(1 + STYLE_MATCH_CHARACTER_SATURATION))
           const stylePosts = verifyStyleTag ? (styleEvidence.get(entry.name)?.posts ?? 0) : null
           const styleScore = stylePosts === null ? 0 : Math.min(1, Math.log10(1 + stylePosts) / Math.log10(1 + STYLE_MATCH_STYLE_SATURATION))
+          const bodyShare = bodyTags.length > 0 && entry.hits > 0 ? (entry.bodyHits ?? 0) / entry.hits : 0
+          const bodyScore = Math.min(1, bodyShare / STYLE_MATCH_BODY_SATURATION)
           let score
           if (mode === 'character') {
             score = verifyCharacters.length > 0
@@ -2165,12 +2197,12 @@ export function apply(ctx, rawConfig = {}) {
               : 0.5 * anchor + 0.25 * pair + 0.12 * expNorm + 0.13 * seedNorm
           } else {
             score = verifyStyleTag
-              ? 0.45 * anchor + 0.18 * pair + 0.15 * styleScore + 0.1 * expNorm + 0.12 * seedNorm
-              : 0.5 * anchor + 0.25 * pair + 0.12 * expNorm + 0.13 * seedNorm
+              ? 0.38 * anchor + 0.15 * pair + 0.15 * styleScore + 0.12 * bodyScore + 0.08 * expNorm + 0.12 * seedNorm
+              : 0.40 * anchor + 0.20 * pair + 0.12 * bodyScore + 0.13 * expNorm + 0.15 * seedNorm
           }
           if (chartTop.has(entry.name)) score = Math.min(1, score * 1.3)
           if (prefer.has(artistKey(entry.name))) score = Math.min(1, score * 1.25 + 0.05)
-          return { entry, anchor, pair, sameCharacter, stylePosts, expNorm, score }
+          return { entry, anchor, pair, sameCharacter, stylePosts, bodyScore, bodyShare, expNorm, score }
         })
         scored.sort((left, right) => right.score - left.score || right.entry.hits - left.entry.hits || left.entry.name.localeCompare(right.entry.name))
         // Reserve slots for small-artist discoveries (artists that only the co-occurrence pass found),
@@ -2217,10 +2249,10 @@ export function apply(ctx, rawConfig = {}) {
         }
 
         return toLossless({
-          reference: { mode, characters, character: character || null, style_tags: styleTags, subject_tags: subjectTags, subject_tags_ignored: true, genre_tags: genreTags, year: year ?? null, rating },
+          reference: { mode, characters, character: character || null, style_tags: styleTags, body_tags: bodyTags, rejected_body_tags: rejectedBodyTags, genre_tags: genreTags, year: year ?? null, rating },
           method: mode === 'character'
             ? 'all-time character anchor scan + character-anchored pair scan + same-character verification'
-            : 'style-first scan (style x style, style x genre) + style-tag verification; character identity and appearance excluded',
+            : 'style-first scan (style x style, style x body, style x genre) + style-tag verification; identity/appearance excluded, body-detail treatment secondary',
           anchor_scans: anchorScans,
           queries,
           candidates: finalistRows.map((finalist) => ({
@@ -2232,6 +2264,8 @@ export function apply(ctx, rawConfig = {}) {
             same_character_posts: finalist.sameCharacter,
             same_character_breakdown: verifyCharacters.length > 0 ? (characterEvidence.get(finalist.entry.name)?.breakdown ?? null) : null,
             style_posts: finalist.stylePosts,
+            body_posts: finalist.entry.bodyHits ?? null,
+            body_share: round(finalist.bodyShare, 2),
             chart_top: chartTop.has(finalist.entry.name),
             sampled_posts: finalist.entry.hits,
             matched: finalist.entry.kinds,
@@ -2266,13 +2300,13 @@ export function apply(ctx, rawConfig = {}) {
             character_evidence: verifyCharacters.length > 0
               ? `same_character_posts sums that artist's own posts carrying any of the reference characters (${characters.slice(0, 2).join(', ')}); same_character_breakdown shows the per-character counts. Drawing several characters from the same reference set is the strongest tag-side evidence that a candidate already draws the look you want.`
               : verifyStyleTag
-                ? `style_posts counts that artist's own posts carrying the anchor style tag "${verifyStyleTag}". The default style mode uses neither character identity nor character appearance (hair/eye colour, skin, body, costume): the goal is the same drawing hand, not the same character.`
+                ? `style_posts counts that artist's own posts carrying the anchor style tag "${verifyStyleTag}". The default style mode ignores character identity and identity/appearance attributes (hair/eye colour, ornaments, costume); body-detail treatment tags (body_posts / body_share) count how often that artist's sampled posts carry the body treatment you asked for, because artists paint bodies very differently.`
                 : 'Evidence counting skipped (verify_same_character=false).',
           },
           iterate: {
             prefer_artists: [...prefer],
             avoid_artists: [...avoid],
-            hint: 'Pass the shortlist you liked back as prefer_artists and the wrong ones as avoid_artists for the next call; refine style_tags/genre_tags from what the samples actually show. Do not add character-appearance tags (hair colour, eye colour, skin, body) to steer the search — they only pull in artists who draw that appearance, not that hand.',
+            hint: 'Pass the shortlist you liked back as prefer_artists and the wrong ones as avoid_artists for the next call; refine style_tags from what the samples actually show. Body/detail treatment tags (body_tags: body build, skin colour/shading, areolae, proportions) are valid secondary evidence; identity/appearance tags (hair colour, hairstyle, eye colour, costume, character) are rejected — keep those in the prompt instead.',
           },
         })
       },

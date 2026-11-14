@@ -132,13 +132,16 @@ check('style match aggregates several reference characters', styleMatchMulti.anc
 const styleMatchLook = await call('danbooru_style_match', {
   character: 'firefly_(honkai:_star_rail)',
   style_tags: 'shiny_skin, sweat',
-  subject_tags: 'white_hair, huge_breasts',
+  body_tags: 'huge_breasts, dark_nipples',
+  subject_tags: 'white_hair, blonde_hair',
   genre_tags: 'sex, hetero',
   limit: 3,
   per_query: 30,
   examples: 0,
 })
-check('style mode ignores identity and appearance features', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && styleMatchLook.reference.subject_tags_ignored === true && styleMatchLook.anchor_scans.every((scan) => scan.kind === 'style-top' || scan.kind === 'genre-top') && styleMatchLook.queries.every((query) => !/white_hair|huge_breasts/.test(String(query.tags))) && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), queries: styleMatchLook.queries.map((query) => query.tags) }))
+const lookBodyTags = (styleMatchLook.reference.body_tags ?? []).join(',')
+const lookRejected = (styleMatchLook.reference.rejected_body_tags ?? []).map((row) => row.tag).join(',')
+check('style mode rejects identity/appearance but keeps body-detail evidence', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && /huge_breasts/.test(lookBodyTags) && /dark_nipples/.test(lookBodyTags) && /white_hair/.test(lookRejected) && /blonde_hair/.test(lookRejected) && styleMatchLook.anchor_scans.every((scan) => scan.kind === 'style-top' || scan.kind === 'genre-top' || scan.kind === 'body-top') && styleMatchLook.queries.some((query) => query.kind === 'style+body' && /huge_breasts/.test(String(query.tags))) && styleMatchLook.queries.every((query) => !/white_hair|blonde_hair/.test(String(query.tags))) && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), body: lookBodyTags, rejected: lookRejected, queries: styleMatchLook.queries.map((query) => query.tags) }))
 
 const styleMatchSmall = await call('danbooru_style_match', {
   style_tags: 'shiny_skin',

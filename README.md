@@ -83,7 +83,7 @@
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
-| `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag、也不用角色外貌——`style_tags`（线/上色/色调/材质）扫全站高分作品，并做 `画风×画风 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`subject_tags`(兼容保留、不参与排序) |
+| `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`subject_tags`(body_tags 的兼容别名) |
 | `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
@@ -205,7 +205,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 **推荐工作流（按 2026-11 实测调优）**：
 
-1. **先跑 `danbooru_style_match`（整体画风匹配）**——它扫全站高分作品、做 `画风×画风 / 画风×题材` 配对（默认**不用角色、也不用角色外貌**），最贴近「整体观感」；实测比纯 tag 加权更稳（能避开「只靠线条像」的误判，也不会因为「画过同一角色/同一发色」就被当成同手）。用 `style_tags` 描述渲染手法、`genre_tags` 描述题材，别塞角色特征或外貌 tag。
+1. **先跑 `danbooru_style_match`（整体画风匹配）**——它扫全站高分作品、做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对（默认**不用角色、也不用发色瞳色服装**，但允许体型/肤色/乳晕等「身体细节画法」作为次级证据），最贴近「整体观感」；实测比纯 tag 加权更稳（能避开「只靠线条像」的误判，也不会因为「画过同一角色/同一发色」就被当成同手）。用 `style_tags` 描述渲染手法、`body_tags` 描述身体细节、`genre_tags` 描述题材。
 2. **再用 `danbooru_artists_from_image`（分层 tag）交叉验证**——若两边都出现同一画师，可信度最高；只有分层表出现、且 `single_dimension=true` 的候选直接忽略。
 
 `danbooru_artists_from_image` 把「以图搜画师」固化为**分层优先级检索**（插件没有视觉能力，由 Agent 看图后提供 tag 分组）：
@@ -246,28 +246,28 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 `danbooru_style_match` 是「同一作者/同一套图反推画师串」这类任务沉淀下来的检索方案：**不问「谁画过同一个角色」，而问「谁的绘制手法、色调、画面风格整体像」**——线稿、上色、色调、人体画法、脸、构图一起像，而不是角色或长相相同。
 
-角色相同不等于画风相同：同一个角色，不同画师能画出完全不同的手；反过来，画风高度一致的画师未必画过你参考图里的角色（实测：只按 Firefly/Kafka 检索会漏掉 `nyantcha`、`merunyaa` 这类同手画师，而画风优先检索能把它们排到最前）。**角色的额外外貌特征同样不参与排序**——白毛、红瞳、深肤色、巨乳这些是「被画的人」的属性，不是绘制手法：按白毛去找只会找到「白毛图多的画师」，和手、色调、画面风格无关。所以默认 `mode="style"` 既不用角色 tag，也不用 `subject_tags`（该参数仅为兼容保留，返回里标 `subject_tags_ignored: true`）；只有确认「必须同一个角色出现」时才用 `mode="character"`。
+角色相同不等于画风相同：同一个角色，不同画师能画出完全不同的手；反过来，画风高度一致的画师未必画过你参考图里的角色（实测：只按 Firefly/Kafka 检索会漏掉 `nyantcha`、`merunyaa` 这类同手画师，而画风优先检索能把它们排到最前）。**角色的身份与「纯外貌」特征（白毛、红瞳、发型、服装、饰品）不参与排序**——按白毛去找只会找到「白毛图多的画师」。但**体型/肤色/乳晕这类「身体细节的画法」要参考**：不同画师画这些地方差别极大（乳晕怎么晕开、皮肤怎么上高光与阴影、肉感怎么堆），所以它们通过 `body_tags` 作为**次级证据**参与加权。身份/外貌 tag 会被过滤掉并列入 `reference.rejected_body_tags`；只有确认「必须同一个角色出现」时才用 `mode="character"`。
 
 **为什么不能只按特征 tag 找**：`half-closed_eyes`、`eyeshadow`、`dark-skinned_male`、`sparkle`、`shiny_skin` 这类 tag 在 AI 图里多半是 prompt 效果，同题材画师几乎人人都有；按它们聚合只会得到「同题材画师榜」，而不是「同画风画师榜」。画师真正决定的是：**线稿、上色、色调、人体比例、脸部构造、构图**。
 
 **工具内部的检索顺序（`mode="style"`，默认）**：
 
-1. **全站高分锚点（核心）**：前两个 `style_tag` 各查一次 `order:score` 前 200 张，按名次衰减加权——名次越靠前权重越高。单 tag + `order:score` 只占两个 tag 额度，**匿名也能用**，而且能覆盖几年前的高分老图；没有 style tag 时才退化为用题材 tag 当锚点。
-2. **pair 查询兜底**：`画风×画风`、`画风×题材` 各最多 2 组（每组正好两个真实 tag）；pair 只能取最新页，客户端再按分数排序，用来补近期/新画师。**不出现任何角色/外貌 tag**。
-3. **画风核验**：对候选逐个查 `画师×锚点画风 tag`，统计该画师自己带这个画风的帖子数——直接衡量「他是不是画这种手」，与角色、外貌无关；这段查询返回的作品同时就是最好的例图。
-4. **加权排序**：`0.45×锚点分 + 0.18×pair 分 + 0.15×画风核验分 + 0.1×小画师共现 + 0.12×seed`；`chart_top`（全站前 10）×1.3；`prefer_artists` 额外加分、`avoid_artists` 剔除。
+1. **全站高分锚点（核心）**：前两个 `style_tag` 各查一次 `order:score` 前 200 张，按名次衰减加权——名次越靠前权重越高。单 tag + `order:score` 只占两个 tag 额度，**匿名也能用**，而且能覆盖几年前的高分老图；没有 style tag 时才退化为用 body/题材 tag 当锚点。
+2. **pair 查询兜底**：`画风×画风`、`画风×身体细节`、`画风×题材`、`身体细节×题材` 各最多 2 组（每组正好两个真实 tag）；pair 只能取最新页，客户端再按分数排序，用来补近期/新画师。**不出现角色/发色/瞳色/服装 tag**。
+3. **画风核验**：对候选逐个查 `画师×锚点画风 tag`，统计该画师自己带这个画风的帖子数——直接衡量「他是不是画这种手」；这段查询返回的作品同时就是最好的例图。
+4. **加权排序（画风模式）**：`0.38×锚点分 + 0.15×pair 分 + 0.15×画风核验分 + 0.12×身体细节分 + 0.08×小画师共现 + 0.12×seed`；身体细节分 = 该画师被采样作品里带 `body_tags` 的比例（饱和 60%），输出 `body_posts` / `body_share`；`chart_top`（全站前 10）×1.3；`prefer_artists` 额外加分、`avoid_artists` 剔除。
 5. 返回 `verify.checklist`（线稿 / 上色 / 色调 / 人体 / 脸 / 构图 六项目视核对清单）与 `iterate.hint`，方便下一轮接着迭代。
 
 **四条关键经验（已写进实现）**：
 
-- **角色身份和外貌都不该当判断基点**：同角色只说明「画过」，同外貌只说明「画过这种长相」，都不说明「画得像」；白毛/巨乳这类 tag 要放回 prompt，而不是放进画师检索。
+- **身份/外貌不能当判断基点，身体细节可以**：同角色只说明「画过」、白毛只说明「画过这种长相」；但乳晕/皮肤/肉感是**画法**，不同画师差异极大，值得作为次级证据（`body_tags` → `body_posts` / `body_share`）。
 - 只按最新页搜 pair 会漏掉几年前的高分老图（例：某画师的同角色作品在收藏前列，但发布于两年前）——所以必须有 `order:score` 锚点扫描。
 - 同一套图跨多个角色时，用 `mode="style"` 分几轮跑（每轮换 `style_tags` 的主锚点），**同名画师跨轮出现**的优先。
 - 例图必须**整体**比对：线稿→上色→色调→人体→脸→构图逐项过，不能因为「半闭眼/红眼影」对上了就定案。
 
 用法（默认画风优先）：
 
-- 画风优先：`danbooru_style_match(style_tags="shiny_skin, sweat, oiled_skin", genre_tags="sex, hetero, cum", limit=12, examples=2)`
+- 画风优先：`danbooru_style_match(style_tags="shiny_skin, sweat, oiled_skin", body_tags="huge_breasts, dark_nipples, pale_skin", genre_tags="sex, hetero, cum", limit=12, examples=2)`
 - 角色模式（仅当必须同角色）：`danbooru_style_match(mode="character", character="firefly_(honkai:_star_rail)", style_tags="shiny_skin", genre_tags="sex")`
 - 迭代：上一轮看中的画师放进 `prefer_artists`、看错的放进 `avoid_artists`，再跑一次即可收敛
 - 成本：约 `1 + 6 + 2×limit + 少量例图` 次请求（默认约 30 次；匿名限速下约 30–40 秒）
@@ -397,7 +397,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略角色与外貌、小体量画师共现与 seed 点名、多方案共识等 62 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 62 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -418,7 +418,8 @@ node verify.mjs
 
 ## 更新记录
 
-- **0.24.0**：`style_match` 进一步**剔除外貌权重**——角色外貌（白毛/红瞳/肤色/体型/服装）不属于绘制手法，不再参与锚点、pair、核验与排序（`subject_tags` 仅兼容保留、返回 `subject_tags_ignored=true`）；style 模式锚点改为前两个 style tag（无 style 时退化为题材），pair 只保留 `画风×画风` / `画风×题材`；`verify.mjs` 改成断言「外貌 tag 不进入任何查询」；README 重写并修复（从 0.20.0 版本重建）
+- **0.25.0**：`style_match` 引入 **`body_tags`（身体细节次级证据）**——体型/肤色/乳晕/肉感这类「身体细节的画法」是合法画风证据（不同画师差别极大），以 `style×body`、`body×genre` pair 与 `body_posts`/`body_share` 参与排序（画风模式权重 `0.38 锚点 + 0.15 pair + 0.15 画风核验 + 0.12 身体细节 + 0.08 共现 + 0.12 seed`）；同时**过滤身份/外貌 tag**（发色、瞳色、发型、饰品、服装名、角色名）并列入 `reference.rejected_body_tags`；`subject_tags` 改为 `body_tags` 的兼容别名；`verify.mjs` 改成断言「身体细节进入查询、发色被拒绝」；README 同步
+- **0.24.0**：`style_match` 初步**剔除外貌权重**——角色外貌（白毛/红瞳/服装）不再参与锚点、pair、核验与排序；style 模式锚点改为前两个 style tag（无 style 时退化为题材），pair 只保留 `画风×画风` / `画风×题材`；README 从 0.20.0 干净版本重建并补回 0.21–0.23 文档
 - **0.23.0**：`style_match` 改为**画风优先（style-first）**——默认 `mode="style"` **不使用角色 tag**（同角色≠同画风；实测旧的角色锚定漏掉 `nyantcha`/`merunyaa` 这类同手画师），`mode="character"` 才用角色锚点；pair 改为 `画风×画风`/`画风×题材`，核验改为 `画师×锚点画风 tag`（`style_posts`）；输出新增 `reference.mode` / `candidates[].style_posts`
 - **0.22.0**：`style_match` 新增 **`seed_artists` 显式点名称**——共现 API 只覆盖每个 style tag 前 100 名画师，eigaka 这种「相关帖分数低、共现频率低」的 167 帖小号仍会漏；现在可 `seed_artists="eigaka"` 强制纳入（先校验 ≥`min_artist_posts`，再抓其作品算 style/genre 吻合度，输出 `seed_artist` / `seed_style_overlap`）；同时修正小画师保留名额只分配给 <1000 帖的账号，并在 `small_artist_discovery.top` 列出共现发现的小画师前 10
 - **0.21.0**：`style_match` 新增**小体量画师发现**——style-tag 共现（related_tag）通道把低于热度门槛的小画师（如 eigaka，167 帖）拉进候选；`min_artist_posts`（默认 50）过滤过小账号，`small_artist_slots`（默认 3）保证它们不被挤出名单，候选输出 `discovered_via_style_cooccurrence` / `artist_posts` / `small_artist` / `reserved_slot`
