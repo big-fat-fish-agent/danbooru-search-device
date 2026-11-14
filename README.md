@@ -1,293 +1,214 @@
-# DSH-D站搜索装置（dsh-danbooru-tools）
+﻿# DSH-D绔欐悳绱㈣缃紙dsh-danbooru-tools锛?
+缁?DeepSeek Harness 鐢ㄧ殑**鍙 Danbooru 宸ュ叿鎻掍欢**锛氱函 Host 鎻掍欢銆侀浂杩愯鏃朵緷璧栥€佷笉鍐欎换浣曟枃浠讹紝鍙敤瀹樻柟 JSON API銆?
+> 鈿狅笍 **杩欐槸 DSH 鎻掍欢锛坆undle锛夛紝涓嶆槸鍙互鐩存帴鍙屽嚮/鍛戒护琛岃繍琛岀殑鏈湴绋嬪簭銆?* `index.js` 渚濊禆 DSH 娉ㄥ叆鐨?`ctx`锛堝伐鍏锋敞鍐屻€佸嚟鎹湇鍔★級锛岀洿鎺?`node index.js` 浼氭姤閿欙紝涔熸病鏈夌嫭绔?CLI锛涘繀椤绘寜涓嬮潰鐨勩€屽畨瑁呫€嶇珷鑺傝杩?DeepSeek Harness 鐨?profile 鎵嶈兘鐢紙鍚嶇О閲岀殑 `dsh-` 鍓嶇紑灏辨槸杩欎釜鎰忔€濓級銆?
+> **AI 鍒朵綔璇存槑**锛氭湰椤圭洰鐢?**AI Agent**锛圖eepSeek Harness 涓殑浼氳瘽 Agent锛夎璁°€佸疄鐜颁笌娴嬭瘯鈥斺€斾唬鐮併€佹枃妗ｃ€佹绱㈢畻娉曚笌鑷鑴氭湰鍧囦负 AI 鐢熸垚锛屽苟缁忕湡瀹?API 璇锋眰楠岃瘉锛涗汉绫诲彧璐熻矗鎻愰渶姹備笌楠屾敹缁撴灉銆?
+瀹冪殑鐩爣鏄€孉I 缁樼敾鎻愮ず璇嶈皟鐮?+ 鐢诲笀璋冪爺銆嶏細鎶婁竴涓ā绯婃兂娉曞彉鎴愬彲鐢ㄧ殑 Danbooru tag锛屽啀鐪嬬湡瀹炰綔鍝佸浣曠敤杩欎簺 tag锛涗篃鍙互鎸夋暣骞存€绘敹钘忔壘鐢诲笀锛堝甫浣撳瀷 tag 闂搁棬涓庡勾浠借寖鍥撮摼鎺ワ級锛屾垨鐢?HOT / 鍛ㄦ / 鍙傝€冩潈閲嶄笁绾ч噰鏍锋壘鍙傝€冪敾甯堛€?
+## 瀹囧畽鍏嶈矗澹版槑锛圕osmic Disclaimer锛?
+> 鏈彃浠舵槸銆屾煡璇㈡惉鐮栧伐銆嶏紝涓嶆槸鍐呭鎻愪緵鑰咃紱瀹冨彧璐熻矗鎶?Danbooru 鐨勫叕寮€妫€绱㈢粨鏋滄惉杩囨潵銆?
+1. **鐗堟潈褰掑睘**锛氭墍鏈変綔鍝佷笌鏁版嵁鏉ヨ嚜 Danbooru 鍏紑 API锛岀増鏉冨綊鍚勭敾甯堛€佹潈鍒╀汉涓?Danbooru 鎵€鏈夛紱鏈」鐩笉瀛樺偍銆佷笉杞敭銆佷笉鍐嶅垎鍙戜换浣曞浘鐗囥€?2. **浣跨敤鑼冨洿**锛氫粎渚涗釜浜哄涔犮€佺爺绌朵笌 AI 缁樼敾鎻愮ず璇嶅弬鑰冿紱璇烽伒瀹?Danbooru 鏈嶅姟鏉℃涓庡綋鍦版硶寰嬨€傛彃浠跺唴缃覆琛岄檺閫燂細**鍖垮悕 1.1 绉?/ 鐧诲綍鍚?0.4 绉?*锛堜粛杩滀綆浜?D 绔欑害 10 娆?绉掍笂闄愶級鈥斺€斿埆鎷垮畠鍘?D 绔欏埛灞忥紝琚檺娴佷簡鑷繁鏀?`minIntervalMs` 鍐烽潤涓€涓嬨€?3. **鍑嵁瀹夊叏**锛欰PI key 鍙瓨鍦ㄤ綘鏈満鐨?DSH 鍑嵁搴擄紙owner-only锛夛紝鎻掍欢涓嶆敹闆嗐€佷笉涓婁紶銆佷笉鎵撳嵃銆佷笉鍐欒繘缂撳瓨/浠撳簱/鍙戝竷鍖呫€?4. **缁撴灉涓嶄繚璇?*锛氭绱㈡槸 tag 棰戠巼/鏀惰棌鏁扮殑鍚彂寮忥紝鍙兘涓嶅噯銆佸彲鑳借繃鏃躲€佸彲鑳姐€岃繃浜庡啓瀹?鏈夌偣 3D銆嶁€斺€旇繖灞炰簬姝ｅ父娉㈠姩锛屼笉鏄彃浠跺湪閽堝浣犮€?5. **渚垫潈澶勭悊**锛氬鏋滀綘鏄潈鍒╀汉鎴栧彂鐜拌鏍囷紝娆㈣繋鎻?issue 鎴栬仈绯讳綔鑰咃紱鎴戜滑浼氬湪璺戣矾涔嬪墠鍏堥厤鍚堜笅鏋?淇锛堥『搴忓緢閲嶈锛夈€?6. **璺戣矾鏉℃**锛氳嫢鍥犱娇鐢ㄦ湰鎻掍欢浜х敓浠讳綍浜夎銆佺储璧斻€侀檺娴併€佸皝鍙枫€佷笘鐣屾湯鏃ユ垨瀹囧畽鐑瘋锛屼綔鑰咃紙AI Agent 鍙婂叾浜虹被鐢叉柟锛夊皢鍦?**0.5 绉掑唴鍘熷湴璺戣矾**锛屼笉鎵挎媴浠讳綍璐ｄ换锛涘眾鏃舵湰鍏嶈矗澹版槑鑷姩鍗囩骇涓恒€屽畤瀹欑骇銆嶏紝骞朵繚鐣欐渶缁堣В閲婃潈锛堣В閲婃潈涔熶細涓€璧疯窇璺級銆?
+鈥斺€?绁濊皟鍙傛剦蹇紝鏀惰棌姘告定 馃搱
 
-给 DeepSeek Harness 用的**只读 Danbooru 工具插件**：纯 Host 插件、零运行时依赖、不写任何文件，只用官方 JSON API。
+## 澶ц嚧浣跨敤鏁欑▼锛堟埅鍥剧増锛?
+> 鈿狅笍 **杩欏彧鏄€屽ぇ鑷存暀绋嬨€?*锛氭埅鍥炬潵鑷彃浠跺紑鍙戣皟璇曟椂鐨勭湡瀹炰細璇濓紝浠呮紨绀恒€屾€庝箞鎻愰棶 / 宸ュ叿杈撳嚭闀夸粈涔堟牱銆嶏紝涓嶆槸涓ユ牸姝ラ鏂囨。锛涘叿浣撳弬鏁般€佸勾浠藉拰缁撴灉浠ュ疄闄呮煡璇负鍑嗐€?
+**鈶?浠ュ浘鎼滅敾甯堬細缁欏畠涓€寮犲浘锛屾壘鐢婚鐩歌繎鐨勭敾甯?*
 
-> ⚠️ **这是 DSH 插件（bundle），不是可以直接双击/命令行运行的本地程序。** `index.js` 依赖 DSH 注入的 `ctx`（工具注册、凭据服务），直接 `node index.js` 会报错，也没有独立 CLI；必须按下面的「安装」章节装进 DeepSeek Harness 的 profile 才能用（名称里的 `dsh-` 前缀就是这个意思）。
+![浠ュ浘鎼滅敾甯堢ず渚媇(docs/tutorial/01-image-to-artist.png)
 
-> **AI 制作说明**：本项目由 **AI Agent**（DeepSeek Harness 中的会话 Agent）设计、实现与测试——代码、文档、检索算法与自检脚本均为 AI 生成，并经真实 API 请求验证；人类只负责提需求与验收结果。
+**鈶?鎸夊勾浠芥壘銆岀儹闂?+ 鑹插僵鑹充附 + 浜虹墿娌逛寒涓版弧銆嶇殑浣滃搧**
 
-它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
+![骞村害鑹插僵鑹充附浣滃搧绀轰緥](docs/tutorial/02-year-colorful-posts.png)
 
-## 宇宙免责声明（Cosmic Disclaimer）
+**鈶?鎵俱€岀敾椋庤创杩戞煇鐢诲笀銆嶄笖闄愬畾涓婁紶骞翠唤锛?025锛?*
 
-> 本插件是「查询搬砖工」，不是内容提供者；它只负责把 Danbooru 的公开检索结果搬过来。
+![鐩镐技鐢诲笀 + 骞翠唤闄愬畾绀轰緥](docs/tutorial/03-similar-artists-2025.png)
 
-1. **版权归属**：所有作品与数据来自 Danbooru 公开 API，版权归各画师、权利人与 Danbooru 所有；本项目不存储、不转售、不再分发任何图片。
-2. **使用范围**：仅供个人学习、研究与 AI 绘画提示词参考；请遵守 Danbooru 服务条款与当地法律。插件内置串行限速：**匿名 1.1 秒 / 登录后 0.4 秒**（仍远低于 D 站约 10 次/秒上限）——别拿它去 D 站刷屏，被限流了自己改 `minIntervalMs` 冷静一下。
-3. **凭据安全**：API key 只存在你本机的 DSH 凭据库（owner-only），插件不收集、不上传、不打印、不写进缓存/仓库/发布包。
-4. **结果不保证**：检索是 tag 频率/收藏数的启发式，可能不准、可能过时、可能「过于写实/有点 3D」——这属于正常波动，不是插件在针对你。
-5. **侵权处理**：如果你是权利人或发现误标，欢迎提 issue 或联系作者；我们会在跑路之前先配合下架/修正（顺序很重要）。
-6. **跑路条款**：若因使用本插件产生任何争议、索赔、限流、封号、世界末日或宇宙热寂，作者（AI Agent 及其人类甲方）将在 **0.5 秒内原地跑路**，不承担任何责任；届时本免责声明自动升级为「宇宙级」，并保留最终解释权（解释权也会一起跑路）。
+## 瀹夎锛圖SH profile锛?
+鏈彃浠舵槸 DSH bundle锛堢函 Host銆侀浂杩愯鏃朵緷璧栵級锛屼互涓嬩笁绉嶆柟寮忎换閫夊叾涓€銆傞娆¤瀹岄渶閲嶅惎 DSH锛涗箣鍚庢洿鏂版彃浠舵枃浠跺彧闇€鍦?`plugin_manager` 閲屽叧鈫掑紑鐑噸杞斤紝涓嶇敤閲嶅惎銆?
+### 鏂规 A锛氫笅杞藉寘锛堟帹鑽愶紝涓嶉渶瑕?git锛?
+1. 涓嬭浇鏈€鏂?zip锛歔Releases 鈫?v0.12.1 鈫?`danbooru-tools-0.12.1.zip`](https://github.com/big-fat-fish-agent/danbooru-search-device/releases/latest)
+2. 瑙ｅ帇鍒颁换鎰忕洰褰曪紝寰楀埌 `danbooru-tools/`
+3. 瀹夎锛氬 Agent 璇淬€岀敤 `plugin_manager` 鐨?`install_bundle` 瀹夎 `<瑙ｅ帇鐩綍缁濆璺緞>`銆嶏紝鎴栧湪 DSH 鎻掍欢绠＄悊鐣岄潰閫夋嫨璇ョ洰褰?4. 閲嶅惎 DSH
 
-—— 祝调参愉快，收藏永涨 📈
-
-## 大致使用教程（截图版）
-
-> ⚠️ **这只是「大致教程」**：截图来自插件开发调试时的真实会话，仅演示「怎么提问 / 工具输出长什么样」，不是严格步骤文档；具体参数、年份和结果以实际查询为准。
-
-**① 以图搜画师：给它一张图，找画风相近的画师**
-
-![以图搜画师示例](docs/tutorial/01-image-to-artist.png)
-
-**② 按年份找「热门 + 色彩艳丽 + 人物油亮丰满」的作品**
-
-![年度色彩艳丽作品示例](docs/tutorial/02-year-colorful-posts.png)
-
-**③ 找「画风贴近某画师」且限定上传年份（2025）**
-
-![相似画师 + 年份限定示例](docs/tutorial/03-similar-artists-2025.png)
-
-## 安装（DSH profile）
-
-本插件是 DSH bundle（纯 Host、零运行时依赖），以下三种方式任选其一。首次装完需重启 DSH；之后更新插件文件只需在 `plugin_manager` 里关→开热重载，不用重启。
-
-### 方案 A：下载包（推荐，不需要 git）
-
-1. 下载最新 zip：[Releases → v0.12.1 → `danbooru-tools-0.12.1.zip`](https://github.com/big-fat-fish-agent/danbooru-search-device/releases/latest)
-2. 解压到任意目录，得到 `danbooru-tools/`
-3. 安装：对 Agent 说「用 `plugin_manager` 的 `install_bundle` 安装 `<解压目录绝对路径>`」，或在 DSH 插件管理界面选择该目录
-4. 重启 DSH
-
-- 适合：不想装 git、只想能用
-- 更新方式：重新下载 zip 覆盖目录 → 关→开热重载
-
-### 方案 B：Git 克隆 + profile link（推荐长期使用 / 二次开发）
+- 閫傚悎锛氫笉鎯宠 git銆佸彧鎯宠兘鐢?- 鏇存柊鏂瑰紡锛氶噸鏂颁笅杞?zip 瑕嗙洊鐩綍 鈫?鍏斥啋寮€鐑噸杞?
+### 鏂规 B锛欸it 鍏嬮殕 + profile link锛堟帹鑽愰暱鏈熶娇鐢?/ 浜屾寮€鍙戯級
 
 1. `git clone https://github.com/big-fat-fish-agent/danbooru-search-device.git`
-2. 在 `$DSH_HOME/profiles/<profile>/package.json` 的 `dependencies` 里加：`"@local/dsh-danbooru-tools": "link:<克隆路径>"`
-3. 把 `"@local/dsh-danbooru-tools"` 加进同一文件的 `dsh.bundles` 列表
-4. 重启 DSH
+2. 鍦?`$DSH_HOME/profiles/<profile>/package.json` 鐨?`dependencies` 閲屽姞锛歚"@local/dsh-danbooru-tools": "link:<鍏嬮殕璺緞>"`
+3. 鎶?`"@local/dsh-danbooru-tools"` 鍔犺繘鍚屼竴鏂囦欢鐨?`dsh.bundles` 鍒楄〃
+4. 閲嶅惎 DSH
 
-- 适合：想跟踪更新、改代码、看 git 历史
-- 更新方式：`git pull` → 关→开热重载（不用重装）
+- 閫傚悎锛氭兂璺熻釜鏇存柊銆佹敼浠ｇ爜銆佺湅 git 鍘嗗彶
+- 鏇存柊鏂瑰紡锛歚git pull` 鈫?鍏斥啋寮€鐑噸杞斤紙涓嶇敤閲嶈锛?
+### 鏂规 C锛欸itHub 婧愮爜 zip锛圧elease 涓嶅彲鐢ㄦ椂鐨勫厹搴曪級
 
-### 方案 C：GitHub 源码 zip（Release 不可用时的兜底）
+浠撳簱椤?**Code 鈫?Download ZIP**锛岃В鍘嬪悗鎸?**鏂规 A 鐨勭 3鈥? 姝?*瀹夎銆傚唴瀹逛笌 Release 鍖呯浉鍚岋紝鍙槸涓嶅甫鐗堟湰鍙锋爣璁般€?
+### 鍗歌浇
 
-仓库页 **Code → Download ZIP**，解压后按 **方案 A 的第 3–4 步**安装。内容与 Release 包相同，只是不带版本号标记。
+`plugin_manager` 鐨?`remove_bundle`锛涙垨鍒犻櫎 profile `package.json` 閲岀殑渚濊禆涓?`dsh.bundles` 鏉＄洰鍚庨噸鍚?DSH銆?
+瑁呭ソ鍚庡彲閫夎嚜妫€锛歚node verify.mjs`锛堢害 3鈥? 鍒嗛挓锛岀湡瀹炶姹傦紝涓嶅啓鏂囦欢锛夈€?
+## 宸ュ叿
 
-### 卸载
-
-`plugin_manager` 的 `remove_bundle`；或删除 profile `package.json` 里的依赖与 `dsh.bundles` 条目后重启 DSH。
-
-装好后可选自检：`node verify.mjs`（约 3–5 分钟，真实请求，不写文件）。
-
-## 工具
-
-| 工具 | 作用 | 主要参数 |
+| 宸ュ叿 | 浣滅敤 | 涓昏鍙傛暟 |
 |---|---|---|
-| `danbooru_search_posts` | 按 tag 搜索作品，返回按分类拆好的 tag 集与图片 URL；可加 `year` 限定年份、`order=score` 按热度 / `order=rank` 按 Hot 排序 | `tags`、`limit`(1–100)、`page`、`rating`、`year`、`order` |
-| `danbooru_top_artists` | **参考权重算法（HOT 优先）**：HOT 区权重 3 → 一周收藏增长权重 2 → 全年新图权重 1 | `year`(必填)、`tags`、`limit`、`sample`、`hot_sample`、`rising_sample`、`rating`、`weighting`、`rank_by`、`include_total` |
-| `danbooru_year_artists` | **整年总收藏算法（独立于 HOT）**：按月采样整年、按该年作品**总收藏数**降序排画师；默认 5% 体型 tag 闸门（只认体型 tag，不认构图）；可选加肤色/肤质「人体参考」和「整体色调」参考 | `year`(必填)、`tags`、`rating`、`limit`、`monthly_sample`、`style_tags`、`style_preset`、`style_match`、`style_threshold`、`style_min_posts`、`style_min_hits`、`style_max_checks`、`appearance_tags`、`appearance_match`、`appearance_threshold`、`color_tags`、`color_match`、`color_threshold`、`compact` |
-| `danbooru_search_tags` | tag 自动补全：规范名、分类、作品数 | `query`、`category`、`limit` |
-| `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
-| `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
-| `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
-| `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
-| `danbooru_style_match` | **整体画风匹配（角色锚定 → 同角色核验）**：先扫角色「全站最高分」作品（名次加权），再跑「角色×题材/画风」「画风×题材」pair 兜底，最后按「该画师同角色作品数」核验并附例图；输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。`character` 支持逗号分隔多个角色（多张参考图场景） | `character`、`style_tags`、`genre_tags`、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character` |
-| `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
-| `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
-| `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
-| `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
-| `danbooru_save_credentials` | 把登录名与 API key 存进 Harness 凭据库（私有文件） | `login`、`apiKey`、`clear` |
+| `danbooru_search_posts` | 鎸?tag 鎼滅储浣滃搧锛岃繑鍥炴寜鍒嗙被鎷嗗ソ鐨?tag 闆嗕笌鍥剧墖 URL锛涘彲鍔?`year` 闄愬畾骞翠唤銆乣order=score` 鎸夌儹搴?/ `order=rank` 鎸?Hot 鎺掑簭 | `tags`銆乣limit`(1鈥?00)銆乣page`銆乣rating`銆乣year`銆乣order` |
+| `danbooru_top_artists` | **鍙傝€冩潈閲嶇畻娉曪紙HOT 浼樺厛锛?*锛欻OT 鍖烘潈閲?3 鈫?涓€鍛ㄦ敹钘忓闀挎潈閲?2 鈫?鍏ㄥ勾鏂板浘鏉冮噸 1 | `year`(蹇呭～)銆乣tags`銆乣limit`銆乣sample`銆乣hot_sample`銆乣rising_sample`銆乣rating`銆乣weighting`銆乣rank_by`銆乣include_total` |
+| `danbooru_year_artists` | **鏁村勾鎬绘敹钘忕畻娉曪紙鐙珛浜?HOT锛?*锛氭寜鏈堥噰鏍锋暣骞淬€佹寜璇ュ勾浣滃搧**鎬绘敹钘忔暟**闄嶅簭鎺掔敾甯堬紱榛樿 5% 浣撳瀷 tag 闂搁棬锛堝彧璁や綋鍨?tag锛屼笉璁ゆ瀯鍥撅級锛涘彲閫夊姞鑲よ壊/鑲よ川銆屼汉浣撳弬鑰冦€嶅拰銆屾暣浣撹壊璋冦€嶅弬鑰?| `year`(蹇呭～)銆乣tags`銆乣rating`銆乣limit`銆乣monthly_sample`銆乣style_tags`銆乣style_preset`銆乣style_match`銆乣style_threshold`銆乣style_min_posts`銆乣style_min_hits`銆乣style_max_checks`銆乣appearance_tags`銆乣appearance_match`銆乣appearance_threshold`銆乣color_tags`銆乣color_match`銆乣color_threshold`銆乣compact` |
+| `danbooru_search_tags` | tag 鑷姩琛ュ叏锛氳鑼冨悕銆佸垎绫汇€佷綔鍝佹暟 | `query`銆乣category`銆乣limit` |
+| `danbooru_get_tag` | 鍗曚釜 tag 璇︽儏 + wiki 鎽樿 + 鍒悕/涓棩鏂囧悕 | `name` |
+| `danbooru_related_tags` | 鍏辩幇鐩稿叧 tag锛堝惈浣滃搧鏁般€佸叡鐜伴鐜囥€佷綑寮︾浉浼煎害锛?| `query`銆乣category`銆乣limit` |
+| `danbooru_similar_artists` | **鐩镐技鐢诲笀锛坱ag 鐢诲儚 + 琛ㄦ儏鐢诲儚锛?*锛氱敱绉嶅瓙鐢诲笀鐨勩€岀壒鑹?tag銆嶄笌銆岃〃鎯?tag 鐢诲儚銆嶆壘鍊欓€夛紝鍐嶆寜琛ㄦ儏 tag 棰戠巼浣欏鸡閲嶆帓 | `artist`(蹇呭～)銆乣limit`銆乣profile_tags`銆乣min_shared`銆乣examples`銆乣expression_tags`銆乣expression_weight` |
+| `danbooru_artists_from_image` | **浠ュ浘鎼滅敾甯?*锛欰gent 鐪嬪浘鍚庣粰鍑?tag 鍒嗙粍锛屾寜鍒嗗眰浼樺厛绾э紙浜虹墿鈫掕〃鎯呪啋缁樺埗鎵嬫硶鈫掔嚎鏉♀啋鑹插僵鈫掑厜鐓р啋tag锛沗mode="style"` 鏃舵墜娉?绾挎潯/鑹插僵/鍏夌収浼樺厛锛夎仛鍚堢敾甯?| `image_tags`(蹇呭～)銆乣person_tags`銆乣expression_tags`銆乣technique_tags`銆乣lineart_tags`銆乣color_tags`銆乣lighting_tags`銆乣mode`銆乣year`銆乣limit`銆乣examples`銆乣example_tags`銆乣allow_no_face` |
+| `danbooru_style_match` | **鏁翠綋鐢婚鍖归厤锛堢敾椋庝紭鍏堬紝瑙掕壊鍙€夛級**锛氶粯璁?`mode="style"` 涓嶇敤瑙掕壊 tag鈥斺€擿style_tags`锛堢嚎/涓婅壊/鑹茶皟/鏉愯川锛? `subject_tags`锛堜綋鍨?鑲よ壊/鑴哥瓑銆屼汉鐗╃被鍨嬨€嶏級+ `genre_tags` 鎵叏绔欓珮鍒嗕綔鍝侊紝骞跺仛 `鐢婚脳鐢婚 / 鐢婚脳浜虹墿绫诲瀷 / 鐢婚脳棰樻潗` 閰嶅锛屽啀鎸?`鐢诲笀脳閿氱偣鐢婚 tag` 鏍搁獙骞堕檮渚嬪浘锛沗mode="character"` 鎵嶇敤瑙掕壊閿氬畾銆傝緭鍑哄叚椤圭洰瑙嗘牳瀵规竻鍗曚笌 `prefer_artists`/`avoid_artists` 杩唬鎺ュ彛銆?*灏忎綋閲忕敾甯?*锛歴tyle-tag 鍏辩幇锛坮elated_tag锛夐€氶亾浼氭妸浣庣儹搴︾敾甯堟媺杩涘€欓€夛紙鈮min_artist_posts` 榛樿 50 甯栵級锛宍small_artist_slots`锛堥粯璁?3锛変负瀹冧滑淇濈暀鍚嶉锛沗seed_artists` 鍙樉寮忕偣鍚嶅皬鐢诲笀锛堝 `eigaka`锛夛紝寮哄埗绾冲叆骞舵寜鍚屾 style/genre 璁＄畻鍚诲悎搴?| `mode`銆乣style_tags`銆乣subject_tags`銆乣genre_tags`銆乣character`(浠?`mode="character"`)銆乣year`銆乣rating`銆乣limit`銆乣per_query`銆乣examples`銆乣prefer_artists`銆乣avoid_artists`銆乣verify_same_character`銆乣discover_small_artists`銆乣min_artist_posts`銆乣small_artist_slots`銆乣seed_artists` |
+| `danbooru_image_artist_consensus` | **澶氭柟妗堝叡璇?*锛氳瀺鍚堝涓绱㈡柟妗堬紙style_match / artists_from_image / similar_artists锛夌殑鍊欓€夊悕鍗曪紝鍙繚鐣欒 鈮min_hits` 涓柟妗堝悓鏃跺懡涓殑鐢诲笀锛岃繃婊ゅ崟鏂规璇垽锛涙棤浜ら泦鏃惰繑鍥為儴鍒嗛噸鍙犳骞舵爣 `fallback_used=true` | `lists`(蹇呭～, JSON 鏁扮粍)銆乣source_names`銆乣min_hits`銆乣limit`銆乣examples`銆乣example_tags`銆乣allow_no_face` |
+| `danbooru_part_specialists` | **閮ㄤ綅鐗瑰寲鎼滅储**锛氭寜閮ㄤ綅鐒︾偣 tag锛坄hand_focus`/`foot_focus`/`thigh_focus`鈥︼級妫€绱㈣閮ㄤ綅楂樻敹钘忎綔鍝侊紝鎸夋敹钘忚仛鍚堢敾甯堟帓鍚嶏紝骞惰繑鍥為儴浣嶉珮鏀惰棌鍥剧墖 | `part`(蹇呭～)銆乣year`銆乣rating`銆乣artists_limit`銆乣posts_limit`銆乣sample`銆乣min_posts`銆乣rank_by`銆乣include_posts` |
+| `danbooru_get_post` | 鍗曚釜浣滃搧锛氬垎绫?tag 闆?+ 棰勮/澶у浘/鍘熷浘 URL | `id` |
+| `danbooru_auth_status` | 鐪嬪嚟鎹槸鍚﹀凡閰嶇疆銆佹潵鑷摢閲岋紙涓嶈繑鍥炲€硷級 | 鏃?|
+| `danbooru_save_credentials` | 鎶婄櫥褰曞悕涓?API key 瀛樿繘 Harness 鍑嵁搴擄紙绉佹湁鏂囦欢锛?| `login`銆乣apiKey`銆乣clear` |
 
-典型用法：「初音未来的水手服怎么打 tag」→ `danbooru_search_tags("hatsune miku")` 拿到 `hatsune_miku` → `danbooru_get_tag("hatsune_miku")` 看 wiki 与别名 → `danbooru_related_tags("hatsune_miku")` 找常见服饰/构图 tag → `danbooru_search_posts(tags="hatsune_miku sailor_dress")` 看真实作品。
+鍏稿瀷鐢ㄦ硶锛氥€屽垵闊虫湭鏉ョ殑姘存墜鏈嶆€庝箞鎵?tag銆嶁啋 `danbooru_search_tags("hatsune miku")` 鎷垮埌 `hatsune_miku` 鈫?`danbooru_get_tag("hatsune_miku")` 鐪?wiki 涓庡埆鍚?鈫?`danbooru_related_tags("hatsune_miku")` 鎵惧父瑙佹湇楗?鏋勫浘 tag 鈫?`danbooru_search_posts(tags="hatsune_miku sailor_dress")` 鐪嬬湡瀹炰綔鍝併€?
+杩斿洖鐨勫浘鐗?URL 鍙互鐩存帴浜ょ粰 `read_image` 鎴?`web_fetch` 鎵撳紑鏌ョ湅銆?
+## 骞翠唤鏌ヨ
 
-返回的图片 URL 可以直接交给 `read_image` 或 `web_fetch` 打开查看。
+D 绔欐病鏈夌嫭绔嬬殑銆屽勾浠借〃銆嶏紝骞翠唤杩囨护鐢ㄧ殑鏄?`date:` 鍏冩爣绛撅細`date:2025-01-01..2025-12-31`銆傛敞鎰忎笁鐐癸細
 
-## 年份查询
+- 鍗曠嫭鍐?`date:2025` 鏃犳晥锛堣繑鍥?0 鏉★級锛屽繀椤诲啓瀹屾暣鏃ユ湡鑼冨洿锛涙湰鎻掍欢鐨?`year` 鍙傛暟浼氳嚜鍔ㄥ睍寮€鎴愯寖鍥村苟鏍￠獙 2005鈥撲粖骞?1銆?- D 绔欏彟鏈変竴涓櫘閫?tag `2025`锛堢害 6,683 浣滃搧锛夛紝鍚箟鏄€屼互 2025 骞翠负涓婚銆嶇殑浣滃搧锛?*涓嶄唬琛?*銆?025 骞村彂甯冦€嶏紝涓嶈鎷垮畠鍋氬勾浠界瓫閫夈€?- `date:`銆乣rating:`銆乣order:` 閮芥槸鍏冩爣绛撅紝**涓嶅崰**鐪熷疄 tag 棰濆害锛涘尶鍚?浼氬憳鐨?2/3 涓?tag 闄愬埗鍙畻鐪熷疄 tag銆?
+鐢ㄦ硶锛?
+- 鏌ユ煇骞存煇鐢诲笀/瑙掕壊鐨勪綔鍝侊細`danbooru_search_posts(tags="gogogo_(gogogorx)", year=2025, order="score")`锛堥厤 `rating=all` 鍙斁寮€鍒嗙骇锛?- 鏌ユ煇骞寸儹闂ㄧ敾甯堬細`danbooru_top_artists(year=2025)` 鈫?榛樿閲囨牱璇ュ勾鏈€楂樺垎鐨?200 寮狅紝鎸夈€屾€诲垎 鈫?涓婃浣滃搧鏁般€嶆帓搴忥紱`tags` 鍙啀闄愬畾瑙掕壊/鐗堟潈/涓婚锛宍sample` 璋冩牱鏈噺锛堥粯璁?200 = 1 娆¤姹傦紝涓婇檺 600 = 3 娆¤姹傦級锛宍rank_by` 鍒囨崲鍙ｅ緞锛坄total_score` 榛樿 / `avg_score` / `posts` 鎸夐珮浜э級锛宍include_total` 棰濆杩斿洖璇ュ勾浣滃搧鎬绘暟锛堝 1 娆¤姹傦級
+- 杩斿洖閲屾瘡涓敾甯堥兘甯?`posts`锛堟牱鍐呬綔鍝佹暟锛夈€乣total_score`銆乣avg_score`銆乣top_score` 鍜?`example`锛堟渶楂樺垎浣滃搧 id/閾炬帴/棰勮鍥撅級
 
-D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：`date:2025-01-01..2025-12-31`。注意三点：
+## 鍙傝€冩潈閲嶏紙涓夌骇閲囨牱锛岄粯璁ゅ紑鍚級
 
-- 单独写 `date:2025` 无效（返回 0 条），必须写完整日期范围；本插件的 `year` 参数会自动展开成范围并校验 2005–今年+1。
-- D 站另有一个普通 tag `2025`（约 6,683 作品），含义是「以 2025 年为主题」的作品，**不代表**「2025 年发布」，不要拿它做年份筛选。
-- `date:`、`rating:`、`order:` 都是元标签，**不占**真实 tag 额度；匿名/会员的 2/3 个 tag 限制只算真实 tag。
-
-用法：
-
-- 查某年某画师/角色的作品：`danbooru_search_posts(tags="gogogo_(gogogorx)", year=2025, order="score")`（配 `rating=all` 可放开分级）
-- 查某年热门画师：`danbooru_top_artists(year=2025)` → 默认采样该年最高分的 200 张，按「总分 → 上榜作品数」排序；`tags` 可再限定角色/版权/主题，`sample` 调样本量（默认 200 = 1 次请求，上限 600 = 3 次请求），`rank_by` 切换口径（`total_score` 默认 / `avg_score` / `posts` 按高产），`include_total` 额外返回该年作品总数（多 1 次请求）
-- 返回里每个画师都带 `posts`（样内作品数）、`total_score`、`avg_score`、`top_score` 和 `example`（最高分作品 id/链接/预览图）
-
-## 参考权重（三级采样，默认开启）
-
-`danbooru_top_artists` 默认按参考优先级给画师加权，模拟人工挑参考的顺序：
-
-| 层级 | 数据源 | 权重 | 说明 |
+`danbooru_top_artists` 榛樿鎸夊弬鑰冧紭鍏堢骇缁欑敾甯堝姞鏉冿紝妯℃嫙浜哄伐鎸戝弬鑰冪殑椤哄簭锛?
+| 灞傜骇 | 鏁版嵁婧?| 鏉冮噸 | 璇存槑 |
 |---|---|---|---|
-| Hot | `posts.json?tags=order:rank`（D 站「Hot」页） | 3 | 只覆盖**近期上传**；过去年份查询会自动跳过，并在 `tiers.hot.skipped` 里说明 |
-| 一周收藏增长 | `/explore/posts/popular.json?scale=week&date=<锚点>`（Popular 页周榜，按该周新增收藏排序） | 2 | 锚点：当年 = 今天；过去年份 = 该年 12-31 所在周。该接口不支持服务端 tag/rating 过滤，插件在客户端过滤 |
-| 全年新图 | `posts.json`：最新一页 + 最高分一页（含 `date:` 年份与用户 tag） | 1 | 兜底采样：默认 2 次请求（200 张新图 + 200 张高分图），既覆盖全年又不丢新图 |
-| 兜底（uniform 模式） | `posts.json` + `order:score` | 1 | 仅 `weighting="uniform"`：按分数采样全年图，无三级权重 |
+| Hot | `posts.json?tags=order:rank`锛圖 绔欍€孒ot銆嶉〉锛?| 3 | 鍙鐩?*杩戞湡涓婁紶**锛涜繃鍘诲勾浠芥煡璇細鑷姩璺宠繃锛屽苟鍦?`tiers.hot.skipped` 閲岃鏄?|
+| 涓€鍛ㄦ敹钘忓闀?| `/explore/posts/popular.json?scale=week&date=<閿氱偣>`锛圥opular 椤靛懆姒滐紝鎸夎鍛ㄦ柊澧炴敹钘忔帓搴忥級 | 2 | 閿氱偣锛氬綋骞?= 浠婂ぉ锛涜繃鍘诲勾浠?= 璇ュ勾 12-31 鎵€鍦ㄥ懆銆傝鎺ュ彛涓嶆敮鎸佹湇鍔＄ tag/rating 杩囨护锛屾彃浠跺湪瀹㈡埛绔繃婊?|
+| 鍏ㄥ勾鏂板浘 | `posts.json`锛氭渶鏂颁竴椤?+ 鏈€楂樺垎涓€椤碉紙鍚?`date:` 骞翠唤涓庣敤鎴?tag锛?| 1 | 鍏滃簳閲囨牱锛氶粯璁?2 娆¤姹傦紙200 寮犳柊鍥?+ 200 寮犻珮鍒嗗浘锛夛紝鏃㈣鐩栧叏骞村張涓嶄涪鏂板浘 |
+| 鍏滃簳锛坲niform 妯″紡锛?| `posts.json` + `order:score` | 1 | 浠?`weighting="uniform"`锛氭寜鍒嗘暟閲囨牱鍏ㄥ勾鍥撅紝鏃犱笁绾ф潈閲?|
 
-- **排序默认 `reference_priority`**：HOT 命中数 → 周榜命中数 → 兜底样本数 → 总分（完全按你说的优先级）；`rank_by` 可切 `weighted_score`（Σ 权重×得分）/ `total_score` / `avg_score` / `posts`
-- **同一画师尽量取新图**：`example` 是该画师采样到的最新作品，`top` 是最高分作品
-- 每个画师返回 `artist_url`（D 站画师页；带年份时自动附 `date:YYYY-01-01..YYYY-12-31` 时间范围）、`tier_posts`（各层级命中数）、`weighted_posts`、`weighted_score`
-- 成本：默认 4 次请求（Hot 1 + 周榜 1 + 兜底 2）；`hot_sample` / `rising_sample` 调样本量
-- 注意：周榜以 R18 为主；默认 `rating=all` 时周榜正常生效，若把 `rating` 收窄到 `g` 会被过滤空（`tiers.rising.sampled = 0`）
+- **鎺掑簭榛樿 `reference_priority`**锛欻OT 鍛戒腑鏁?鈫?鍛ㄦ鍛戒腑鏁?鈫?鍏滃簳鏍锋湰鏁?鈫?鎬诲垎锛堝畬鍏ㄦ寜浣犺鐨勪紭鍏堢骇锛夛紱`rank_by` 鍙垏 `weighted_score`锛埼?鏉冮噸脳寰楀垎锛? `total_score` / `avg_score` / `posts`
+- **鍚屼竴鐢诲笀灏介噺鍙栨柊鍥?*锛歚example` 鏄鐢诲笀閲囨牱鍒扮殑鏈€鏂颁綔鍝侊紝`top` 鏄渶楂樺垎浣滃搧
+- 姣忎釜鐢诲笀杩斿洖 `artist_url`锛圖 绔欑敾甯堥〉锛涘甫骞翠唤鏃惰嚜鍔ㄩ檮 `date:YYYY-01-01..YYYY-12-31` 鏃堕棿鑼冨洿锛夈€乣tier_posts`锛堝悇灞傜骇鍛戒腑鏁帮級銆乣weighted_posts`銆乣weighted_score`
+- 鎴愭湰锛氶粯璁?4 娆¤姹傦紙Hot 1 + 鍛ㄦ 1 + 鍏滃簳 2锛夛紱`hot_sample` / `rising_sample` 璋冩牱鏈噺
+- 娉ㄦ剰锛氬懆姒滀互 R18 涓轰富锛涢粯璁?`rating=all` 鏃跺懆姒滄甯哥敓鏁堬紝鑻ユ妸 `rating` 鏀剁獎鍒?`g` 浼氳杩囨护绌猴紙`tiers.rising.sampled = 0`锛?
+## 鏁村勾鎬绘敹钘忕畻娉曪紙鐙珛浜?HOT锛?
+`danbooru_year_artists` 鏄彟涓€濂楃畻娉曪紝**涓嶄娇鐢?HOT/鍛ㄦ鏉冮噸**锛屼笓闂ㄥ洖绛斻€屾煇涓€骞撮噷鍝簺鐢诲笀鏈€鍙楁杩庛€嶏細
 
-## 整年总收藏算法（独立于 HOT）
+- 鏁版嵁婧愶細`posts.json` 鎸夋湀鍒嗘壒锛坄date:YYYY-MM-01..鏈堟湯` + `order:favcount`锛夛紝鍙栨瘡鏈堟敹钘忔暟鏈€楂樼殑涓€鎵逛綔鍝侊紙榛樿 200 寮?= 姣忔湀 1 娆¤姹傦級
+- 鑱氬悎锛氭妸鏍锋湰鍐呮瘡寮犲浘鐨?`fav_count` 绱姞鍒扮敾甯堣韩涓婏紝鎸?*璇ュ勾鎬绘敹钘忔暟**闄嶅簭鎺掑悕锛涘悓鏃剁粰鍑?`artist_url`锛堢敾甯堥〉锛岃嚜鍔ㄥ甫璇ュ勾浠?`date:` 鑼冨洿锛夈€乣posts`锛堟牱鏈唴浣滃搧鏁帮級銆乣avg_favorites`銆乣months`锛堣鐩栨湀浠芥暟锛夈€乣best`锛堟渶楂樻敹钘忎綔鍝侊級銆乣newest`锛堟渶鏂颁綔鍝侊級
+- 瑕嗙洊鑼冨洿锛氳繃鍘诲勾浠?= 12 涓湀锛涘綋骞?= 1 鏈堝埌褰撳墠鏈堬紱鏁村勾閮界畻涓婏紝涓嶅仛銆屾渶杩戞墠涓婁紶銆嶇殑鍋忓悜
+- 浠ｄ环涓庡亸宸細鎬绘敹钘忔槸**鏍锋湰浼扮畻**鈥斺€旀瘡鏈堝彧鍙栨敹钘忔鍓?`monthly_sample` 寮狅紝姒滃浣滃搧涓嶈锛涘洜姝や細婕忔帀銆屽垰涓婁紶杩樻病绉疮鏀惰棌銆嶇殑浼樼鍥撅紙杩欐鏄綘瑕佺殑鍙栬垗锛?- 鎴愭湰锛氭瘡瑕嗙洊涓€涓湀 1 娆¤姹傦紙2025 骞?= 12 娆★紱2026 骞?11 鏈?= 11 娆★級
+- 榛樿 `rating=all`锛?*鍚?R18**锛屾敹钘?鐑鐨勭湡瀹炲垎甯冨姝わ級锛涢渶瑕佸畨鍏ㄥ唴瀹规椂鏄惧紡浼?`rating="g"`
 
-`danbooru_year_artists` 是另一套算法，**不使用 HOT/周榜权重**，专门回答「某一年里哪些画师最受欢迎」：
+## 椋庢牸鍗犳瘮娴嬮噺锛堟寜 tag 姣斾緥鏍囨敞锛岄粯璁?5% 闂搁棬锛?
+鎯虫壘銆岃倝鎰熺敾甯堛€嶆椂锛岀敤 `style_tags` 鎴?`style_preset` 璁╁伐鍏锋牳楠屽苟鏍囨敞姣忎綅鐢诲笀鐨勯鏍?tag 鍗犳瘮锛?
+- `style_preset="fleshy"` = `thick_thighs` + `plump` + `curvy` + `wide_hips` + `pear-shaped_figure`锛?*鍙敤浣撳瀷 tag**锛?- 涔熷彲浠ヤ紶 `style_tags="thick_thighs,plump"`锛沗style_match="any"`锛堥粯璁わ紝鍛戒腑浠讳竴鍗崇畻锛夋垨 `"all"`锛堝繀椤诲叏涓級
+- **鍙浣撳瀷 tag锛屼笉璁ゅЭ鎬?鏋勫浘 tag**锛歚ass_focus` / `from_behind` / `bent_over` / `spread_legs` 杩欑被鏋勫浘涓嶄細绠椾綔鑲夋劅璇佹嵁锛屽彧浣滀负 `style.pose_posts` 璇婃柇椤硅繑鍥炩€斺€旈伩鍏嶃€屾瀯鍥捐倝銆嶅啋鍏呫€屼綋鍨嬭倝銆?- **鍒ゅ畾鏂瑰紡**锛氭寜鎬绘敹钘忎粠楂樺埌浣庢牳楠屽€欓€夌敾甯堚€斺€旀媺璇ョ敾甯?*鍚屼竴骞?*鏈€澶?100 寮犻珮鏀惰棌浣滃搧锛? 娆¤姹?浜猴級锛岀畻銆屽甫浣撳瀷 tag 鐨勫浘 / 鏍搁獙鍥炬暟銆?- `style_threshold`锛?*榛樿 0.05锛?%锛?*锛涗紶 0 鍒欏彧娴嬮噺涓嶆窐姹?- `style_min_hits`锛堥粯璁?2锛夛細鑷冲皯瑕佹湁 2 寮犲甫 tag 鐨勫浘鎵嶅彲鑳介€氳繃锛岄伩鍏嶃€? 寮犲浘鍒氬ソ 2%銆嶇殑鍣０
+- `style_min_posts`锛堥粯璁?3锛夛細璇ュ勾浣滃搧灏戜簬杩欎釜鏁颁笉鍋氬垽瀹?- `style_max_checks`锛堥粯璁?40锛夛細鏈€澶氭牳楠屽灏戜綅鍊欓€夛紝澶?`limit` 浣嶅氨鎻愬墠鍋?- `compact=true`锛氬彧杩斿洖鍚嶅瓧/鎬绘敹钘?浣滃搧鏁?椋庢牸鍗犳瘮锛屼笉杩斿洖浣滃搧寮曠敤锛岄€傚悎鎵归噺鐪嬫瘮渚?- 鍔犱簡骞翠唤灏卞彧鏍搁獙**璇ュ勾浠?*鐨勪綔鍝侊紙`year` 鏈潵灏辨槸蹇呭～锛?- 杩斿洖閲屾瘡浣嶇敾甯堝甫 `style: { tags, match, threshold, min_hits, checked_posts, hit_posts, ratio, pose_posts, best }`锛沗best` = 璇ョ敾甯?*甯﹂鏍?tag 鐨?*鏈€楂樻敹钘忎綔鍝侊紙鏈€澶?3 寮狅級锛屽彲鐩存帴鐐瑰紑鍙傝€冿紙"浼樺厛鐪嬪甫 tag 鐨勫浘"锛夛紱椤跺眰 `style_filter` 璇存槑鏍搁獙鍑犱汉銆侀€氳繃鍑犱汉
 
-- 数据源：`posts.json` 按月分批（`date:YYYY-MM-01..月末` + `order:favcount`），取每月收藏数最高的一批作品（默认 200 张 = 每月 1 次请求）
-- 聚合：把样本内每张图的 `fav_count` 累加到画师身上，按**该年总收藏数**降序排名；同时给出 `artist_url`（画师页，自动带该年份 `date:` 范围）、`posts`（样本内作品数）、`avg_favorites`、`months`（覆盖月份数）、`best`（最高收藏作品）、`newest`（最新作品）
-- 覆盖范围：过去年份 = 12 个月；当年 = 1 月到当前月；整年都算上，不做「最近才上传」的偏向
-- 代价与偏差：总收藏是**样本估算**——每月只取收藏榜前 `monthly_sample` 张，榜外作品不计；因此会漏掉「刚上传还没积累收藏」的优秀图（这正是你要的取舍）
-- 成本：每覆盖一个月 1 次请求（2025 年 = 12 次；2026 年 11 月 = 11 次）
-- 默认 `rating=all`（**含 R18**，收藏/热榜的真实分布如此）；需要安全内容时显式传 `rating="g"`
+## 浜轰綋闄勫姞鍙傝€冿紙鑲よ壊 / 鐨偆璐ㄦ劅锛?
+浣撳瀷涔嬪锛宍danbooru_year_artists` 杩樻敮鎸佸湪**鍚屼竴鎵规牳楠屼綔鍝?*涓婄粺璁°€屼汉浣撳弬鑰冦€峵ag锛屼笉棰濆鍙戣姹傦細
 
-## 风格占比测量（按 tag 比例标注，默认 5% 闸门）
+- `appearance_tags`锛氶€楀彿/绌烘牸鍒嗛殧锛屼緥濡?`pale_skin, shiny_skin`
+  - 鑲よ壊锛歚pale_skin`銆乣dark_skin`銆乣tan`銆乣tanlines`銆乣grey_skin`銆乣blue_skin`鈥?  - 鐨偆璐ㄦ劅锛歚shiny_skin`銆乣sweat`銆乣wet`銆乣oiled_skin`銆乣lotion`銆乣dimples_of_venus`鈥?  - **涓嶅惈鐪肩潧棰滆壊**锛氱溂鐫涘睘浜庤鑹茬壒寰侊紝鏁翠綋瑙嗚鍙傝€冭鐢ㄤ笅闈㈢殑 `color_tags`
+- `appearance_match`锛歚any`锛堥粯璁わ紝鍛戒腑浠讳竴鍗崇畻锛夋垨 `all`锛堝繀椤诲叏涓級
+- `appearance_threshold`锛氶粯璁?0 = **鍙粺璁′笉娣樻卑**锛涗紶 0.1~0.3 杩欑被姣斾緥鎵嶆寜銆屽甫鍙傝€?tag 鐨勫崰姣斻€嶅姞涓€閬撻椄闂?- 杩斿洖閲屾瘡浣嶇敾甯堝甫 `appearance: { tags, match, threshold, checked_posts, hit_posts, ratio, per_tag, best }`
+  - `per_tag`锛氭瘡涓弬鑰?tag 鍦ㄦ牳楠屼綔鍝侀噷鐨勫懡涓暟锛堟瘮濡?`shiny_skin: 6`锛?  - `best`锛氬甫鍙傝€?tag 鐨勬渶楂樻敹钘忎綔鍝侊紙鏈€澶?3 寮狅級锛屽彲鐩存帴鐐瑰紑鐪嬭偆鑹?鑲よ川鏄惁鐪熺殑璐村悎
+- 椤跺眰 `appearance_filter` 涓?`style_filter` 骞跺垪锛岃鏄庢牳楠屼汉鏁般€侀€氳繃浜烘暟
+- 鍏稿瀷鐢ㄦ硶锛歚style_preset="fleshy"` + `appearance_tags="pale_skin,shiny_skin"`锛屼竴娆℃煡璇㈡寜銆屼綋鍨?+ 鑲よ壊 + 鑲よ川銆嶇粰鐢诲笀鎵撳垎
 
-想找「肉感画师」时，用 `style_tags` 或 `style_preset` 让工具核验并标注每位画师的风格 tag 占比：
+## 鏁翠綋鑹茶皟鍙傝€冿紙鐢婚潰瑙傛劅锛?
+銆屾暣浣撳弬鑰冦€嶄笉鍐嶆寕鍦ㄤ汉浣撲笂锛岃€屾槸鍗曠嫭缁熻**鏁村紶鐢婚潰鐨勮壊璋?*鈥斺€斿悓鏍峰鐢ㄩ偅鎵规牳楠屼綔鍝侊紝涓嶉澶栧彂璇锋眰锛?
+- `color_tags`锛氶€楀彿/绌烘牸鍒嗛殧锛屼緥濡?`monochrome, blue_theme`
+  - 鍗曡壊/浣庨ケ鍜岋細`monochrome`銆乣monochrome_background`銆乣partially_colored`銆乣limited_palette`
+  - 涓婚鑹诧細`blue_theme`銆乣red_theme`銆乣green_theme`銆乣purple_theme`銆乣pink_theme`銆乣yellow_theme`
+  - 鑹插僵椋庢牸锛歚colorful`銆乣colorful_background`銆乣pastel_colors`銆乣iridescent`銆乣gradient_background`
+- `color_match`锛歚any`锛堥粯璁わ級鎴?`all`
+- `color_threshold`锛氶粯璁?0 = 鍙粺璁′笉娣樻卑锛涗紶姣斾緥鍒欏姞闂搁棬
+- 杩斿洖閲屾瘡浣嶇敾甯堝甫 `color: { tags, match, threshold, checked_posts, hit_posts, ratio, per_tag, best }`
+  - `per_tag`锛氭瘡涓壊璋?tag 鐨勫懡涓暟锛堟瘮濡?`blue_theme: 9`锛?  - `best`锛氬甫鑹茶皟 tag 鐨勬渶楂樻敹钘忎綔鍝侊紙鏈€澶?3 寮狅級锛岀偣寮€灏辫兘鐪嬫暣浣撹壊璋冩槸鍚﹀鍛?- 椤跺眰 `color_filter` 璇存槑鏍搁獙浜烘暟銆侀€氳繃浜烘暟
+- 鍏稿瀷鐢ㄦ硶锛歚color_tags="monochrome,limited_palette"` + `color_threshold=0.2`锛岀瓫鍑恒€屾暣浣撳亸鍗曡壊/闄愬畾鑹层€嶇殑鐢诲笀
+- 鎴愭湰锛氬拰 `appearance_tags` 鍏辩敤鏍搁獙璇锋眰锛屼笉棰濆澧炲姞璇锋眰鏁?
+## 鐩镐技鐢诲笀锛坱ag 鐢诲儚 + 琛ㄦ儏鐢诲儚锛?
+`danbooru_similar_artists` 鐢?Danbooru 鐨?tag 鍏辩幇鏁版嵁鎵俱€岄鏍肩浉杩戙€嶇殑鐢诲笀锛?*涓嶆槸鍥惧儚 embedding**锛夛細
 
-- `style_preset="fleshy"` = `thick_thighs` + `plump` + `curvy` + `wide_hips` + `pear-shaped_figure`（**只用体型 tag**）
-- 也可以传 `style_tags="thick_thighs,plump"`；`style_match="any"`（默认，命中任一即算）或 `"all"`（必须全中）
-- **只认体型 tag，不认姿态/构图 tag**：`ass_focus` / `from_behind` / `bent_over` / `spread_legs` 这类构图不会算作肉感证据，只作为 `style.pose_posts` 诊断项返回——避免「构图肉」冒充「体型肉」
-- **判定方式**：按总收藏从高到低核验候选画师——拉该画师**同一年**最多 100 张高收藏作品（1 次请求/人），算「带体型 tag 的图 / 核验图数」
-- `style_threshold`：**默认 0.05（5%）**；传 0 则只测量不淘汰
-- `style_min_hits`（默认 2）：至少要有 2 张带 tag 的图才可能通过，避免「1 张图刚好 2%」的噪声
-- `style_min_posts`（默认 3）：该年作品少于这个数不做判定
-- `style_max_checks`（默认 40）：最多核验多少位候选，够 `limit` 位就提前停
-- `compact=true`：只返回名字/总收藏/作品数/风格占比，不返回作品引用，适合批量看比例
-- 加了年份就只核验**该年份**的作品（`year` 本来就是必填）
-- 返回里每位画师带 `style: { tags, match, threshold, min_hits, checked_posts, hit_posts, ratio, pose_posts, best }`；`best` = 该画师**带风格 tag 的**最高收藏作品（最多 3 张），可直接点开参考（"优先看带 tag 的图"）；顶层 `style_filter` 说明核验几人、通过几人
+1. 鍙栫瀛愮敾甯堢殑 `related_tag`锛岀瓫鍑恒€屽 TA 楂橀銆佷絾鍏ㄧ珯涓嶇畻閫氱敤銆嶇殑 general tag锛堟帓闄?`1girl`銆乣highres`銆佽儗鏅壊绛夌粨鏋勬€?tag锛夛紝浣滀负椋庢牸鐢诲儚锛坄profile_tags`锛岄粯璁ゅ彇 6 涓級
+2. **琛ㄦ儏鐢诲儚**锛氫粠绉嶅瓙鐢诲笀鐨?tag 鐢诲儚閲屾寫鍑鸿〃鎯?tag锛坄smile`銆乣blush`銆乣open_mouth`銆乣half-closed_eyes`銆乣tongue_out` 绛夛紝`expression_tags` 榛樿 4 涓級锛岀敤瀹冧滑鎶娿€岃〃鎯呬範鎯浉杩戙€嶇殑鐢诲笀涔熸媺杩涘€欓€夋睜
+3. 瀵规瘡涓敾鍍?tag 鏌?`related_tag&category=artist`锛屾敹闆嗗叡浜 tag 鐨勭敾甯堬紝鎸?`棰戠巼 脳 tag 绋€鏈夊害` 鍔犳潈绱姞
+4. 鍊欓€?= 椋庢牸鐢诲儚鍊欓€?鈭?琛ㄦ儏鐢诲儚鍊欓€夛紱琛ㄦ儏鍊欓€夊繀椤婚€氳繃銆岄鏍?tag 閲嶅彔妫€鏌ャ€嶏紙鍚屼竴鎵?`related_tag` 閲岃兘鏌ュ埌绉嶅瓙椋庢牸 tag锛夛紝閬垮厤鍙〃鎯呭儚銆佺敾椋庡畬鍏ㄤ笉鍍?5. 鏈€缁堝垎鏁帮細`(1 - expression_weight) 脳 椋庢牸鍒?+ expression_weight 脳 琛ㄦ儏浣欏鸡鍒哷锛涜〃鎯呬綑寮﹀琛ㄦ儏 tag 棰戠巼鍋?*绋€鏈夊害鍔犳潈**锛坄expression_weight` 榛樿 0.5锛?
+- 鎴愭湰锛? 娆★紙绉嶅瓙鐢诲儚锛? `profile_tags` 娆?+ `expression_tags` 娆?+ 鏈€澶?`2 脳 limit` 娆★紙琛ㄦ儏浣欏鸡/椋庢牸閲嶅彔妫€鏌ワ級锛岄粯璁ょ害 1 + 6 + 4 + 20 = 31 娆¤姹?- **渚嬪浘杞鍒?*锛歚examples>0` 鏃堕粯璁や紭鍏堛€屽甫闇€姹?tag锛堣〃鎯?浣撳瀷锛? 鑳界湅鍒拌劯銆嶇殑浣滃搧锛涘彧鏈夌敤鎴锋槑纭姹傝儗褰便€佸壀褰便€佷笅鍗婅韩鐗瑰啓绛夋棤鑴告瀯鍥炬椂鎵嶄紶 `allow_no_face=true`锛沗example_tags` 鍙鐩栭渶姹?tag锛屾瘡鏉′緥鍥惧甫 `matched_tags` 渚夸簬鏍稿锛涙病鏈夊彲鐢ㄦ牱鍥剧殑甯栧瓙浼氳璺宠繃
+- **棰樻潗闄嶆潈**锛氱浉浼煎害璁＄畻閲?`furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 鐨勬潈閲嶄箻 **0.05**锛岄伩鍏嶅吔鍚戦鏉愭媺鍔ㄧ敾甯堢浉浼煎害
+- 灞€闄愶細tag 灞傞潰鐨勮〃鎯呯浉浼硷紙鐢ㄥ摢浜涜〃鎯呫€佸甯哥敤锛変粛涓嶇瓑浜庛€岃〃鎯呯敾娉曘€嶇浉浼硷紙鐪煎瀷銆佸槾褰€佽叜绾㈢敾娉曪級锛涘繀椤?`read_image` 鐩鍚庢墠鑳戒笅缁撹
+- 鐢ㄦ硶锛歚danbooru_similar_artists(artist="satou_kuuki", limit=10, examples=3)`
 
-## 人体附加参考（肤色 / 皮肤质感）
+## 浠ュ浘鎼滅敾甯堬紙鍥?鈫?鐢诲笀锛?
+**鎺ㄨ崘宸ヤ綔娴侊紙鎸?2026-11 瀹炴祴璋冧紭锛?*锛?
+1. **鍏堣窇 `danbooru_style_match`锛堟暣浣撶敾椋庡尮閰嶏級**鈥斺€斿畠鎵叏绔欓珮鍒嗕綔鍝併€佸仛 `鐢婚脳鐢婚 / 鐢婚脳浜虹墿绫诲瀷 / 鐢婚脳棰樻潗` 閰嶅锛堥粯璁?*涓嶇敤瑙掕壊**锛夛紝鏈€璐磋繎銆屾暣浣撹鎰熴€嶏紱瀹炴祴姣旂函 tag 鍔犳潈鏇寸ǔ锛堣兘閬垮紑銆屽彧闈犵嚎鏉″儚銆嶇殑璇垽锛屼篃涓嶄細鍥犱负銆岀敾杩囧悓涓€瑙掕壊銆嶅氨琚綋鎴愬悓鎵嬶級銆傜敤 `style_tags` 鎻忚堪娓叉煋鎵嬫硶銆乣subject_tags` 鎻忚堪浜虹墿绫诲瀷銆乣genre_tags` 鎻忚堪棰樻潗锛屽埆濉炶鑹茬壒寰?tag銆?2. **鍐嶇敤 `danbooru_artists_from_image`锛堝垎灞?tag锛変氦鍙夐獙璇?*鈥斺€旇嫢涓よ竟閮藉嚭鐜板悓涓€鐢诲笀锛屽彲淇″害鏈€楂橈紱鍙湁鍒嗗眰琛ㄥ嚭鐜般€佷笖 `single_dimension=true` 鐨勫€欓€夌洿鎺ュ拷鐣ャ€?
+`danbooru_artists_from_image` 鎶娿€屼互鍥炬悳鐢诲笀銆嶅浐鍖栦负**鍒嗗眰浼樺厛绾ф绱?*锛堟彃浠舵病鏈夎瑙夎兘鍔涳紝鐢?Agent 鐪嬪浘鍚庢彁渚?tag 鍒嗙粍锛夛細
 
-体型之外，`danbooru_year_artists` 还支持在**同一批核验作品**上统计「人体参考」tag，不额外发请求：
-
-- `appearance_tags`：逗号/空格分隔，例如 `pale_skin, shiny_skin`
-  - 肤色：`pale_skin`、`dark_skin`、`tan`、`tanlines`、`grey_skin`、`blue_skin`…
-  - 皮肤质感：`shiny_skin`、`sweat`、`wet`、`oiled_skin`、`lotion`、`dimples_of_venus`…
-  - **不含眼睛颜色**：眼睛属于角色特征，整体视觉参考请用下面的 `color_tags`
-- `appearance_match`：`any`（默认，命中任一即算）或 `all`（必须全中）
-- `appearance_threshold`：默认 0 = **只统计不淘汰**；传 0.1~0.3 这类比例才按「带参考 tag 的占比」加一道闸门
-- 返回里每位画师带 `appearance: { tags, match, threshold, checked_posts, hit_posts, ratio, per_tag, best }`
-  - `per_tag`：每个参考 tag 在核验作品里的命中数（比如 `shiny_skin: 6`）
-  - `best`：带参考 tag 的最高收藏作品（最多 3 张），可直接点开看肤色/肤质是否真的贴合
-- 顶层 `appearance_filter` 与 `style_filter` 并列，说明核验人数、通过人数
-- 典型用法：`style_preset="fleshy"` + `appearance_tags="pale_skin,shiny_skin"`，一次查询按「体型 + 肤色 + 肤质」给画师打分
-
-## 整体色调参考（画面观感）
-
-「整体参考」不再挂在人体上，而是单独统计**整张画面的色调**——同样复用那批核验作品，不额外发请求：
-
-- `color_tags`：逗号/空格分隔，例如 `monochrome, blue_theme`
-  - 单色/低饱和：`monochrome`、`monochrome_background`、`partially_colored`、`limited_palette`
-  - 主题色：`blue_theme`、`red_theme`、`green_theme`、`purple_theme`、`pink_theme`、`yellow_theme`
-  - 色彩风格：`colorful`、`colorful_background`、`pastel_colors`、`iridescent`、`gradient_background`
-- `color_match`：`any`（默认）或 `all`
-- `color_threshold`：默认 0 = 只统计不淘汰；传比例则加闸门
-- 返回里每位画师带 `color: { tags, match, threshold, checked_posts, hit_posts, ratio, per_tag, best }`
-  - `per_tag`：每个色调 tag 的命中数（比如 `blue_theme: 9`）
-  - `best`：带色调 tag 的最高收藏作品（最多 3 张），点开就能看整体色调是否对味
-- 顶层 `color_filter` 说明核验人数、通过人数
-- 典型用法：`color_tags="monochrome,limited_palette"` + `color_threshold=0.2`，筛出「整体偏单色/限定色」的画师
-- 成本：和 `appearance_tags` 共用核验请求，不额外增加请求数
-
-## 相似画师（tag 画像 + 表情画像）
-
-`danbooru_similar_artists` 用 Danbooru 的 tag 共现数据找「风格相近」的画师（**不是图像 embedding**）：
-
-1. 取种子画师的 `related_tag`，筛出「对 TA 高频、但全站不算通用」的 general tag（排除 `1girl`、`highres`、背景色等结构性 tag），作为风格画像（`profile_tags`，默认取 6 个）
-2. **表情画像**：从种子画师的 tag 画像里挑出表情 tag（`smile`、`blush`、`open_mouth`、`half-closed_eyes`、`tongue_out` 等，`expression_tags` 默认 4 个），用它们把「表情习惯相近」的画师也拉进候选池
-3. 对每个画像 tag 查 `related_tag&category=artist`，收集共享该 tag 的画师，按 `频率 × tag 稀有度` 加权累加
-4. 候选 = 风格画像候选 ∪ 表情画像候选；表情候选必须通过「风格 tag 重叠检查」（同一批 `related_tag` 里能查到种子风格 tag），避免只表情像、画风完全不像
-5. 最终分数：`(1 - expression_weight) × 风格分 + expression_weight × 表情余弦分`；表情余弦对表情 tag 频率做**稀有度加权**（`expression_weight` 默认 0.5）
-
-- 成本：1 次（种子画像）+ `profile_tags` 次 + `expression_tags` 次 + 最多 `2 × limit` 次（表情余弦/风格重叠检查），默认约 1 + 6 + 4 + 20 = 31 次请求
-- **例图软规则**：`examples>0` 时默认优先「带需求 tag（表情/体型）+ 能看到脸」的作品；只有用户明确要求背影、剪影、下半身特写等无脸构图时才传 `allow_no_face=true`；`example_tags` 可覆盖需求 tag，每条例图带 `matched_tags` 便于核对；没有可用样图的帖子会被跳过
-- **题材降权**：相似度计算里 `furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 的权重乘 **0.05**，避免兽向题材拉动画师相似度
-- 局限：tag 层面的表情相似（用哪些表情、多常用）仍不等于「表情画法」相似（眼型、嘴形、腮红画法）；必须 `read_image` 目视后才能下结论
-- 用法：`danbooru_similar_artists(artist="satou_kuuki", limit=10, examples=3)`
-
-## 以图搜画师（图 → 画师）
-
-**推荐工作流（按 2026-11 实测调优）**：
-
-1. **先跑 `danbooru_style_match`（整体画风匹配）**——它扫全站高分作品、做 `角色×题材 / 画风×题材` 配对，最贴近「整体观感」；实测比纯 tag 加权更稳（能避开「只靠线条像」的误判）。用 `style_tags` 描述渲染手法、`genre_tags` 描述题材，别塞角色特征 tag。
-2. **再用 `danbooru_artists_from_image`（分层 tag）交叉验证**——若两边都出现同一画师，可信度最高；只有分层表出现、且 `single_dimension=true` 的候选直接忽略。
-
-`danbooru_artists_from_image` 把「以图搜画师」固化为**分层优先级检索**（插件没有视觉能力，由 Agent 看图后提供 tag 分组）：
-
-| 维度 | 说明 | `mode="person"` 权重 | `mode="style"` 权重 |
+| 缁村害 | 璇存槑 | `mode="person"` 鏉冮噸 | `mode="style"` 鏉冮噸 |
 |---|---|---|---|
-| `person` 人物风格 | 体型比例、面部特征、角色设计 | 0.22 | 0.08 |
-| `expression` 表情 | 表情 tag | 0.12 | 0.02 |
-| `technique` 绘制手法 | 材质/上色（`latex`、`shiny_clothes`…） | **0.22** | **0.28** |
-| `lineart` 线条 | 线稿粗细/有无/彩色线（`lineart`、`colored_lineart`…） | **0.18** | **0.24** |
-| `clothing` 服装材质效果 | 只测**材质效果**：反光/高光（`latex`、`shiny_clothes`）、透明（`see-through_clothes`）、湿身（`wet_clothes`）、蕾丝/丝绸厚度感（`lace`、`silk`）；服装款式（`lingerie`、`bra`、`shirt`、`dress`…）不计分、会被过滤 | **0.10** | **0.12** |
-| `color` 色彩 | 主色/饱和度/多彩/虹彩（`colorful`、`iridescent`…） | 0.06 | 0.12 |
-| `lighting` 光照 | 逆光/斑驳光/镜头光（`dappled_sunlight`、`backlighting`…） | 0.05 | 0.10 |
-| `tag` 泛 tag | 其余描述 tag | 0.05 | 0.04 |
+| `person` 浜虹墿椋庢牸 | 浣撳瀷姣斾緥銆侀潰閮ㄧ壒寰併€佽鑹茶璁?| 0.22 | 0.08 |
+| `expression` 琛ㄦ儏 | 琛ㄦ儏 tag | 0.12 | 0.02 |
+| `technique` 缁樺埗鎵嬫硶 | 鏉愯川/涓婅壊锛坄latex`銆乣shiny_clothes`鈥︼級 | **0.22** | **0.28** |
+| `lineart` 绾挎潯 | 绾跨绮楃粏/鏈夋棤/褰╄壊绾匡紙`lineart`銆乣colored_lineart`鈥︼級 | **0.18** | **0.24** |
+| `clothing` 鏈嶈鏉愯川鏁堟灉 | 鍙祴**鏉愯川鏁堟灉**锛氬弽鍏?楂樺厜锛坄latex`銆乣shiny_clothes`锛夈€侀€忔槑锛坄see-through_clothes`锛夈€佹箍韬紙`wet_clothes`锛夈€佽暰涓?涓濈桓鍘氬害鎰燂紙`lace`銆乣silk`锛夛紱鏈嶈娆惧紡锛坄lingerie`銆乣bra`銆乣shirt`銆乣dress`鈥︼級涓嶈鍒嗐€佷細琚繃婊?| **0.10** | **0.12** |
+| `color` 鑹插僵 | 涓昏壊/楗卞拰搴?澶氬僵/铏瑰僵锛坄colorful`銆乣iridescent`鈥︼級 | 0.06 | 0.12 |
+| `lighting` 鍏夌収 | 閫嗗厜/鏂戦┏鍏?闀滃ご鍏夛紙`dappled_sunlight`銆乣backlighting`鈥︼級 | 0.05 | 0.10 |
+| `tag` 娉?tag | 鍏朵綑鎻忚堪 tag | 0.05 | 0.04 |
 
-> 线条/绘制手法权重高于旧默认（person 模式 lineart 0.18、technique 0.22；style 模式 0.24 / 0.28）；`clothing` 维度只衡量**服装材质效果**（0.10 / 0.12）——反光、透明度、湿身、蕾丝/丝绸的厚度与褶皱，**不衡量服装款式**；`lingerie`、`bra`、`shirt` 这类款式名词属于角色身份特征，会被过滤掉。
+> 绾挎潯/缁樺埗鎵嬫硶鏉冮噸楂樹簬鏃ч粯璁わ紙person 妯″紡 lineart 0.18銆乼echnique 0.22锛泂tyle 妯″紡 0.24 / 0.28锛夛紱`clothing` 缁村害鍙　閲?*鏈嶈鏉愯川鏁堟灉**锛?.10 / 0.12锛夆€斺€斿弽鍏夈€侀€忔槑搴︺€佹箍韬€佽暰涓?涓濈桓鐨勫帤搴︿笌瑜剁毐锛?*涓嶈　閲忔湇瑁呮寮?*锛沗lingerie`銆乣bra`銆乣shirt` 杩欑被娆惧紡鍚嶈瘝灞炰簬瑙掕壊韬唤鐗瑰緛锛屼細琚繃婊ゆ帀銆?
+- **瑙掕壊韬唤/瑁呴グ鐗瑰緛涓嶈鍒?*锛氬彂鑹层€佺灣鑹层€佽銆佸厜鐜€佸吔鑰炽€佸熬宸淬€侀グ鍝併€佹湇瑁呮寮忓悕璇嶏紙`lingerie`銆乣bra`銆乣shirt`鈥︼級浼氬湪璇勫垎鍓嶈鍓旈櫎锛屽苟鍦ㄨ繑鍥炵殑 `excluded_identity_tags` 閲屽垪鍑猴紱**鏈嶈鏉愯川鏁堟灉 tag**锛坄latex`銆乣shiny_clothes`銆乣see-through_clothes`銆乣lace`銆乣silk`锛変繚鐣欏苟璁″叆 `clothing` 缁村害銆備互鍥炬悳鐢诲笀鍙鎻忚堪銆屾€庝箞鐢荤殑銆嶏紝鑰屼笉鏄€岀敾鐨勬槸璋?绌夸簡鍝欢娆惧紡鐨勮。鏈嶃€嶃€?- **鍗曠淮搴﹁瘉鎹檷鏉?*锛氭悳绱簡澶氫釜缁村害鏃讹紝鍙涓€涓淮搴﹀懡涓殑鐢诲笀锛堝鍙湁 `lineart` 鍍忕殑 tayuido锛夊垎鏁?脳0.55 骞舵爣 `single_dimension=true`銆乣dimensions_used`鈥斺€旈伩鍏嶃€岀嚎鏉″儚灏辨暣寮犲儚銆嶇殑璇垽
+- **寮鸿皟銆岀敾椋庣被浼笺€?*锛氱敤 `mode="style"` 鈫?缁樺埗鎵嬫硶 鈫?绾挎潯 鈫?鏈嶈璐ㄦ劅 鈮?鑹插僵 鈫?鍏夌収 鈫?浜虹墿 鈫?琛ㄦ儏 鈫?tag
+- **寮鸿皟銆屼汉鐗╂柟闈€嶆垨鏈鏄?*锛歚mode="person"`锛堥粯璁わ級鈫?浜虹墿 鈮?缁樺埗鎵嬫硶 鈫?绾挎潯 鈫?琛ㄦ儏 鈫?鏈嶈璐ㄦ劅 鈫?鑹插僵 鈫?鍏夌収 鈫?tag
+- 姣忎釜缁村害**鏈€澶氬彇 4 涓?tag锛岄€愪釜 tag 鍗曠嫭妫€绱?*锛堝悇 100 鏉★紝`order:score`锛夛紱鍚屼竴缁村害鍐呮寜甯栧瓙鍘婚噸锛屽啀鎸夌敾甯堝嚭鐜伴鐜囧姞鏉冪疮鍔?- `year` 鍙€夛細**涓嶅～榛樿鍏ㄦ椂闂?*锛堜笉闄愬勾浠斤級锛屽～浜嗘墠鎸夎骞磋繃婊?- 鎴愭湰锛氱害 5鈥?0 娆¤姹傦紙鍚勭粍 tag 鏁颁箣鍜岋紝鏈€澶?4脳7锛? `examples` 娆?- 鐢ㄦ硶锛?  `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", clothing_tags="latex, shiny_clothes", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
+- 灞€闄愶細浠嶆槸 tag 妫€绱㈣仛鍚堬紝涓嶆槸鍥惧儚 embedding锛涙渶缁堝繀椤?`read_image` 鐩纭
 
-- **角色身份/装饰特征不计分**：发色、瞳色、角、光环、兽耳、尾巴、饰品、服装款式名词（`lingerie`、`bra`、`shirt`…）会在评分前被剔除，并在返回的 `excluded_identity_tags` 里列出；**服装材质效果 tag**（`latex`、`shiny_clothes`、`see-through_clothes`、`lace`、`silk`）保留并计入 `clothing` 维度。以图搜画师只该描述「怎么画的」，而不是「画的是谁/穿了哪件款式的衣服」。
-- **单维度证据降权**：搜索了多个维度时，只被一个维度命中的画师（如只有 `lineart` 像的 tayuido）分数 ×0.55 并标 `single_dimension=true`、`dimensions_used`——避免「线条像就整张像」的误判
-- **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 服装质感 ≈ 色彩 → 光照 → 人物 → 表情 → tag
-- **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 ≈ 绘制手法 → 线条 → 表情 → 服装质感 → 色彩 → 光照 → tag
-- 每个维度**最多取 4 个 tag，逐个 tag 单独检索**（各 100 条，`order:score`）；同一维度内按帖子去重，再按画师出现频率加权累加
-- `year` 可选：**不填默认全时间**（不限年份），填了才按该年过滤
-- 成本：约 5–20 次请求（各组 tag 数之和，最多 4×7）+ `examples` 次
-- 用法：
-  `danbooru_artists_from_image(image_tags="white_shirt, lying, white_background", person_tags="blue_hair, yellow_eyes", expression_tags="half-closed_eyes, blush", technique_tags="shiny_skin, realistic", lineart_tags="lineart, colored_lineart", clothing_tags="latex, shiny_clothes", color_tags="colorful, blue_theme", lighting_tags="dappled_sunlight, backlighting", mode="style", limit=10, examples=3)`
-- 局限：仍是 tag 检索聚合，不是图像 embedding；最终必须 `read_image` 目视确认
+### 鍊熼壌涓庢斁寮冿紙瀵圭収 Google 浠ュ浘鎼滃浘锛?
+- **鍊熼壌骞跺凡瀹炵幇锛氳繎閲嶅/鍚屾簮鍥捐仛绫?*鈥斺€斿悓涓€寮犵敾鐨勬敼鑹层€佽鍒囥€乿ariant 甯栧湪 Danbooru 涓婂叡浜?`parent_id` 鎴?`md5`锛宍artists_from_image` 鍏堟寜銆岃瑙夌皣銆嶅幓閲嶅啀璁″垎锛岄伩鍏嶅悓涓€寮犵敾缁欏悓涓€鐢诲笀鍙犲姞澶氭璇佹嵁锛涗緥鍥句篃鍙粠涓嶅悓绨囬噷鎸戙€俙part_specialists` 鍚屾牱鎶樺彔閲嶅鍥撅紙椤跺眰杩斿洖 `deduped_posts`锛?- **鍊熼壌骞跺凡鏈夛細澶氫俊鍙锋帓搴?+ 鍏滃簳**鈥斺€斿垎灞傜淮搴﹀姞鏉冦€佹敹钘忕儹搴︽帓搴忥紱渚嬪浘浼樺厛銆屽甫闇€姹?tag + 鏈夎劯銆嶏紝鎵句笉鍒版墠閫愮骇鏀惧
+- **鏀惧純锛氳瑙?embedding 妫€绱?*鈥斺€旈渶瑕佹湰鍦?CLIP/BLIP 绾фā鍨嬶紙鍑?GB 渚濊禆锛夛紝鍜屻€岄浂杩愯鏃朵緷璧栥€佽交閲忋€佸彧璇?API銆嶇殑瀹氫綅鍐茬獊锛汥anbooru 涔熸病鏈夊叕寮€鐨勭浉浼煎浘/鍚戦噺妫€绱?API
+- **鏀惧純锛歄CR 璇嗗埆绛惧悕/姘村嵃**鈥斺€旈渶瑕?OCR 渚濊禆锛涜€屼細璇濋噷 Agent 鏈韩灏辫兘鐪嬪浘涓婄殑鏂囧瓧锛屾病蹇呰濉炶繘鎻掍欢
+- 鑻ヤ互鍚庣湡瑕佸仛瑙嗚鍚戦噺妫€绱紝搴?*鍗曞紑涓€涓瓙鎻掍欢**锛堟湰鍦拌瑙夋湇鍔¤礋璐ｅ浘 鈫?embedding锛屽啀鍚戞湰鎻掍欢鎻愪緵鍊欓€夛級锛岃€屼笉鏄妸閲嶄緷璧栧杩涜繖涓彃浠?
+## 鏁翠綋鐢婚鍖归厤锛堢敾椋庝紭鍏堬紝瑙掕壊鍙€夛級
 
-### 借鉴与放弃（对照 Google 以图搜图）
+`danbooru_style_match` 鏄€屽悓涓€浣滆€?鍚屼竴濂楀浘鍙嶆帹鐢诲笀涓层€嶈繖绫讳换鍔℃矇娣€涓嬫潵鐨勬绱㈡柟妗堬細**涓嶉棶銆岃皝鐢昏繃鍚屼竴涓鑹层€嶏紝鑰岄棶銆岃皝鐨勭敾闈㈡暣浣撳儚銆嶁€斺€旂嚎绋裤€佷笂鑹层€佽壊璋冦€佷汉浣撱€佽劯銆佹瀯鍥句竴璧峰儚锛岃€屼笉鍙槸瑙掕壊鐩稿悓**銆?
+瑙掕壊鐩稿悓涓嶇瓑浜庣敾椋庣浉鍚岋細鍚屼竴涓鑹诧紝涓嶅悓鐢诲笀鑳界敾鍑哄畬鍏ㄤ笉鍚岀殑鎵嬶紱鍙嶈繃鏉ワ紝鐢婚楂樺害涓€鑷寸殑鐢诲笀鏈繀鐢昏繃浣犲弬鑰冨浘閲岀殑瑙掕壊锛堝疄娴嬶細鍙寜 Firefly/Kafka 妫€绱細婕忔帀 `nyantcha`銆乣merunyaa` 杩欑被鍚屾墜鐢诲笀锛岃€岀敾椋庝紭鍏堟绱㈣兘鎶婂畠浠帓鍒版渶鍓嶏級銆傛墍浠ラ粯璁?`mode="style"` **瀹屽叏涓嶇敤瑙掕壊 tag**锛涘彧鏈夌‘璁ゃ€屽繀椤诲悓涓€涓鑹插嚭鐜般€嶆椂鎵嶇敤 `mode="character"`銆?
+**涓轰粈涔堜笉鑳藉彧鎸夌壒寰?tag 鎵?*锛歚half-closed_eyes`銆乣eyeshadow`銆乣dark-skinned_male`銆乣sparkle`銆乣shiny_skin` 杩欑被 tag 鍦?AI 鍥鹃噷澶氬崐鏄?prompt 鏁堟灉锛屽悓棰樻潗鐢诲笀鍑犱箮浜轰汉閮芥湁锛涙寜瀹冧滑鑱氬悎鍙細寰楀埌銆屽悓棰樻潗鐢诲笀姒溿€嶏紝鑰屼笉鏄€屽悓鐢婚鐢诲笀姒溿€嶃€傜敾甯堢湡姝ｅ喅瀹氱殑鏄細**绾跨銆佷笂鑹层€佽壊璋冦€佷汉浣撴瘮渚嬨€佽劯閮ㄦ瀯閫犮€佹瀯鍥?*銆?
+**宸ュ叿鍐呴儴鐨勬绱㈤『搴忥紙`mode="style"`锛岄粯璁わ級**锛?
+1. **鍏ㄧ珯楂樺垎閿氱偣锛堟牳蹇冿級**锛氱涓€涓?`style_tag` 涓庣涓€涓?`subject_tag` 鍚勬煡涓€娆?`order:score` 鍓?200 寮狅紝鎸夊悕娆¤“鍑忓姞鏉冣€斺€斿悕娆¤秺闈犲墠鏉冮噸瓒婇珮銆傚崟 tag + `order:score` 鍙崰涓や釜 tag 棰濆害锛?*鍖垮悕涔熻兘鐢?*锛岃€屼笖鑳借鐩栧嚑骞村墠鐨勯珮鍒嗚€佸浘銆?2. **pair 鏌ヨ鍏滃簳**锛歚鐢婚脳鐢婚`銆乣鐢婚脳浜虹墿绫诲瀷`銆乣鐢婚脳棰樻潗`銆乣浜虹墿绫诲瀷脳棰樻潗` 鍚勬渶澶?2 缁勶紙姣忕粍姝ｅソ涓や釜鐪熷疄 tag锛夛紱pair 鍙兘鍙栨渶鏂伴〉锛屽鎴风鍐嶆寜鍒嗘暟鎺掑簭锛岀敤鏉ヨˉ杩戞湡/鏂扮敾甯堛€?3. **鐢婚鏍搁獙**锛氬鍊欓€夐€愪釜鏌?`鐢诲笀脳閿氱偣鐢婚 tag`锛岀粺璁¤鐢诲笀鑷繁甯﹁繖涓敾椋庣殑甯栧瓙鏁扳€斺€旂洿鎺ヨ　閲忋€屼粬鏄笉鏄敾杩欑鎵嬨€嶏紝涓庤鑹叉棤鍏筹紱杩欐鏌ヨ杩斿洖鐨勪綔鍝佸悓鏃跺氨鏄渶濂界殑渚嬪浘銆?4. **鍔犳潈鎺掑簭**锛歚0.45脳閿氱偣鍒?+ 0.18脳pair 鍒?+ 0.15脳鐢婚鏍搁獙鍒?+ 0.1脳灏忕敾甯堝叡鐜?+ 0.12脳seed`锛沗chart_top`锛堝叏绔欏墠 10锛壝?.3锛沗prefer_artists` 棰濆鍔犲垎銆乣avoid_artists` 鍓旈櫎銆?5. 杩斿洖 `verify.checklist`锛堢嚎绋?/ 涓婅壊 / 鑹茶皟 / 浜轰綋 / 鑴?/ 鏋勫浘 鍏」鐩鏍稿娓呭崟锛変笌 `iterate.hint`锛屾柟渚夸笅涓€杞帴鐫€杩唬銆?
+**鍥涙潯鍏抽敭缁忛獙锛堝凡鍐欒繘瀹炵幇锛?*锛?
+- **涓嶈鐢ㄨ鑹插綋鍒ゆ柇鍩虹偣**锛氬悓瑙掕壊鍙鏄庛€岀敾杩囥€嶏紝涓嶈鏄庛€岀敾寰楀儚銆嶏紱`subject_tags`锛堜綋鍨?鑲よ壊/鑴?琛ㄦ儏锛夌敤鏉ヤ繚鎸併€屼汉鐗╃被鍨嬨€嶆帴杩戯紝浣嗗畠鎻忚堪鐨勬槸琚敾鐨勪汉锛屼笉鏄韩浠姐€?- 鍙寜鏈€鏂伴〉鎼?pair 浼氭紡鎺夊嚑骞村墠鐨勯珮鍒嗚€佸浘锛堜緥锛氭煇鐢诲笀鐨勫悓瑙掕壊浣滃搧鍦ㄦ敹钘忓墠鍒楋紝浣嗗彂甯冧簬涓ゅ勾鍓嶏級鈥斺€旀墍浠ュ繀椤绘湁 `order:score` 閿氱偣鎵弿銆?- 鍚屼竴濂楀浘璺ㄥ涓鑹叉椂锛岀敤 `mode="style"` 鍒嗗嚑杞窇锛堟瘡杞崲 `style_tags` 鐨勪富閿氱偣锛夛紝**鍚屽悕鐢诲笀璺ㄨ疆鍑虹幇**鐨勪紭鍏堛€?- 渚嬪浘蹇呴』**鏁翠綋**姣斿锛氱嚎绋库啋涓婅壊鈫掕壊璋冣啋浜轰綋鈫掕劯鈫掓瀯鍥鹃€愰」杩囷紝涓嶈兘鍥犱负銆屽崐闂溂/绾㈢溂褰便€嶅涓婁簡灏卞畾妗堛€?
+鐢ㄦ硶锛堥粯璁ょ敾椋庝紭鍏堬級锛?
+- 鐢婚浼樺厛锛歚danbooru_style_match(style_tags="shiny_skin, sweat, oiled_skin", subject_tags="huge_breasts, dark_nipples, pale_skin", genre_tags="sex, hetero, cum", limit=12, examples=2)`
+- 瑙掕壊妯″紡锛堜粎褰撳繀椤诲悓瑙掕壊锛夛細`danbooru_style_match(mode="character", character="firefly_(honkai:_star_rail)", style_tags="shiny_skin", genre_tags="sex")`
+- 杩唬锛氫笂涓€杞湅涓殑鐢诲笀鏀捐繘 `prefer_artists`銆佺湅閿欑殑鏀捐繘 `avoid_artists`锛屽啀璺戜竴娆″嵆鍙敹鏁?- 鎴愭湰锛氱害 `1 + 6 + 2脳limit + 灏戦噺渚嬪浘` 娆¤姹傦紙榛樿绾?30 娆★紱鍖垮悕闄愰€熶笅绾?30鈥?0 绉掞級
 
-- **借鉴并已实现：近重复/同源图聚类**——同一张画的改色、裁切、variant 帖在 Danbooru 上共享 `parent_id` 或 `md5`，`artists_from_image` 先按「视觉簇」去重再计分，避免同一张画给同一画师叠加多次证据；例图也只从不同簇里挑。`part_specialists` 同样折叠重复图（顶层返回 `deduped_posts`）
-- **借鉴并已有：多信号排序 + 兜底**——分层维度加权、收藏热度排序；例图优先「带需求 tag + 有脸」，找不到才逐级放宽
-- **放弃：视觉 embedding 检索**——需要本地 CLIP/BLIP 级模型（几 GB 依赖），和「零运行时依赖、轻量、只读 API」的定位冲突；Danbooru 也没有公开的相似图/向量检索 API
-- **放弃：OCR 识别签名/水印**——需要 OCR 依赖；而会话里 Agent 本身就能看图上的文字，没必要塞进插件
-- 若以后真要做视觉向量检索，应**单开一个子插件**（本地视觉服务负责图 → embedding，再向本插件提供候选），而不是把重依赖塞进这个插件
-
-## 整体画风匹配（角色锚定 → 同角色核验）
-
-`danbooru_style_match` 是「同一作者/同一套图反推画师串」这类任务沉淀下来的检索方案：**不问「谁画了这些特征」，而问「谁画过同一个角色、同一类场景、并且整体画法一致」**。
-
-**为什么不能按特征 tag 找**：`half-closed_eyes`、`eyeshadow`、`dark-skinned_male`、`sparkle`、`shiny_skin` 这类 tag 在 AI 图里多半是 prompt 效果，同题材画师几乎人人都有；按它们聚合只会得到「同题材画师榜」，而不是「同画风画师榜」。画师真正决定的是：**线稿、上色、色调、人体比例、脸部构造、构图**。
-
-**工具内部的检索顺序**：
-
-1. **全站高分锚点（核心）**：用 `character`（无角色时用第一个 `style_tag`）单独查 `order:score` 的前 200 张，按名次衰减加权——名次越靠前权重越高。单 tag + `order:score` 只占两个 tag 额度，**匿名也能用**，且能覆盖几年前的高分老图。
-2. **pair 查询兜底**：`角色×题材`、`角色×画风`、`画风×题材` 各最多 2 组（每组正好两个真实 tag，适配匿名 2-tag 限制）；pair 只能取最新页，客户端再按分数排序，用来补近期/新画师。
-3. **同角色核验**：对候选逐个查 `画师×角色`，统计该画师自己的同角色作品数——「已经画过这个角色」是最强的 tag 侧证据；这段查询返回的作品同时就是最好的例图。
-4. **加权排序**：`0.55×锚点分 + 0.25×pair 分 + 0.2×同角色分`（无角色时只按锚点/pair）；若候选在「全站前 10 名」里出现过，再 ×1.3（`chart_top=true`），因为作品能排到该角色收藏榜最前本身就是强证据。`prefer_artists` 会额外加分，`avoid_artists` 直接剔除。
-5. 返回 `verify.checklist`（线稿 / 上色 / 色调 / 人体 / 脸 / 构图 六项目视核对清单）与 `iterate.hint`，方便下一轮接着迭代。
-
-**三条关键经验（已写进实现）**：
-
-- 同角色作品「多」≠ 画风像，但「有」是必要条件；所以同角色只做证据加分，主排序仍是「全站高分作品里的出现」。
-- 只按最新页搜 `角色×题材` 会漏掉几年前的高分老图（例：某画师的同角色作品在收藏前列，但发布于两年前）——所以必须有 `order:score` 锚点扫描。
-- 例图必须**整体**比对：线稿→上色→色调→人体→脸→构图逐项过，不能因为「半闭眼/红眼影」对上了就定案。
-
-用法：
-
-- 带角色：`danbooru_style_match(character="firefly_(honkai:_star_rail)", style_tags="shiny_skin, colored_lineart", genre_tags="sex, sweat", limit=10, examples=2)`
-- 无角色：`danbooru_style_match(style_tags="shiny_skin, sweat, colored_lineart", genre_tags="sex", limit=12, examples=2)`
-- 迭代：上一轮看中的画师放进 `prefer_artists`、看错的放进 `avoid_artists`，再跑一次即可收敛
-- 成本：约 `1 + 6 + 2×limit + 少量例图` 次请求（默认约 30 次；匿名限速下约 30–40 秒）
-
-### 多张参考图 / 多角色（0.18.0 起）
-
-同一作者的一套图常常横跨好几个角色；只锚定一个角色会漏掉「画过其他角色、但整体画法相同」的画师。`character` 现在接受**逗号分隔的多个角色**（最多 3 个，前两个会各跑一次全站高分锚点并参与同角色核验）：
-
-- 多角色输入：`danbooru_style_match(character="firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)", style_tags="shiny_skin, sweat", genre_tags="sex, hetero", limit=10, examples=2)`
-- 输出：`reference.characters` 是解析后的角色列表；`anchor_scans` 每个角色一条；每个候选多带 `same_character_breakdown`（逐角色作品数），`same_character_posts` 是各角色之和。
-- 推荐流程（本轮实测收敛最快）：① 参考图按角色/服装分组，每组挑最接近的 `style_tags` 各跑一次；② 汇总多轮候选，**同名画师跨轮出现**的优先；③ 对 finalist 抓 2–3 张代表作和参考图拼图，按六项清单整体比对；④ 用 `prefer_artists` 把入选者带回再跑一轮；⑤ 最后才写画师串权重。
-- 成本：每多一个角色约多 `1 + 2 + 2×limit` 次请求（前两个角色参与核验）。
-
-**本轮案例（15 张同一 AI 作者参考图）**：Firefly 9 张、蓝发泳装 3 张，棕发蓝挑染 / 深紫发 / 红发军装 / 粉发和服各 1 张。多轮检索（Firefly 锚点 → 泳装/latex/和服锚点 → prefer 迭代 → 13 名候选逐一看图）后收敛到：`hews`（脸/线条/构图主源）、`0haribo0`（背身/油亮/细线）、`harin_05`（苍白油亮肉体/POV）、`greem_bang`（重油光 + 深色乳晕）四个候选，`mochirong` / `mignon` 只作白底与冷调补充——比 0.16.x 只按特征 tag 得出的 `mochirong` 结论整体贴近得多。
-
-## 多方案共识（0.20.0 起）
-
-`danbooru_image_artist_consensus` 解决「单方案总会有误判」的问题：对同一张参考图跑 2–3 个不同方案，各自取短名单，再**只保留被 ≥2 个方案同时命中的画师**。
-
+### 澶氬紶鍙傝€冨浘 / 澶氳鑹诧紙0.18.0 璧凤紝浠?`mode="character"`锛?
+鍚屼竴浣滆€呯殑涓€濂楀浘甯稿父妯法濂藉嚑涓鑹层€?*娉ㄦ剰锛氳繖鍙湪 `mode="character"` 涓嬬敓鏁?*鈥斺€旂敾椋庝紭鍏堟ā寮忔湰鏉ュ氨涓嶉渶瑕佽鑹诧紱鍙湁褰撲綘纭疄瑕併€屽悓涓€涓鑹层€嶆椂鎵嶇敤澶氳鑹查敋瀹氥€俙character` 鎺ュ彈**閫楀彿鍒嗛殧鐨勫涓鑹?*锛堟渶澶?3 涓紝鍓嶄袱涓細鍚勮窇涓€娆″叏绔欓珮鍒嗛敋鐐瑰苟鍙備笌鍚岃鑹叉牳楠岋級锛?
+- 澶氳鑹茶緭鍏ワ細`danbooru_style_match(character="firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)", style_tags="shiny_skin, sweat", genre_tags="sex, hetero", limit=10, examples=2)`
+- 杈撳嚭锛歚reference.characters` 鏄В鏋愬悗鐨勮鑹插垪琛紱`anchor_scans` 姣忎釜瑙掕壊涓€鏉★紱姣忎釜鍊欓€夊甯?`same_character_breakdown`锛堥€愯鑹蹭綔鍝佹暟锛夛紝`same_character_posts` 鏄悇瑙掕壊涔嬪拰銆?- 鎺ㄨ崘娴佺▼锛堟湰杞疄娴嬫敹鏁涙渶蹇級锛氣憼 鍙傝€冨浘鎸夎鑹?鏈嶈鍒嗙粍锛屾瘡缁勬寫鏈€鎺ヨ繎鐨?`style_tags` 鍚勮窇涓€娆★紱鈶?姹囨€诲杞€欓€夛紝**鍚屽悕鐢诲笀璺ㄨ疆鍑虹幇**鐨勪紭鍏堬紱鈶?瀵?finalist 鎶?2鈥? 寮犱唬琛ㄤ綔鍜屽弬鑰冨浘鎷煎浘锛屾寜鍏」娓呭崟鏁翠綋姣斿锛涒懀 鐢?`prefer_artists` 鎶婂叆閫夎€呭甫鍥炲啀璺戜竴杞紱鈶?鏈€鍚庢墠鍐欑敾甯堜覆鏉冮噸銆?- 鎴愭湰锛氭瘡澶氫竴涓鑹茬害澶?`1 + 2 + 2脳limit` 娆¤姹傦紙鍓嶄袱涓鑹插弬涓庢牳楠岋級銆?
+**鏈疆妗堜緥锛?5 寮犲悓涓€ AI 浣滆€呭弬鑰冨浘锛?*锛欶irefly 9 寮犮€佽摑鍙戞吵瑁?3 寮狅紝妫曞彂钃濇寫鏌?/ 娣辩传鍙?/ 绾㈠彂鍐涜 / 绮夊彂鍜屾湇鍚?1 寮犮€?
+- 0.17鈥?.18 鐢ㄨ鑹查敋瀹氬緱鍒扮殑缁撹鏄?`hews` / `0haribo0` / `harin_05` / `greem_bang`鈥斺€斿畠浠‘瀹炵敾杩欎簺瑙掕壊锛屼絾**鏄€屽悓瑙掕壊銆嶇瓫鍑烘潵鐨勶紝涓嶆槸銆屽悓鐢婚銆嶇瓫鍑烘潵鐨?*銆?- 0.23.0 鏀规垚鐢婚浼樺厛鍚庯紝鍚屾牱鐨?15 寮犲浘璺戝嚭 `nyantcha`锛?7.6锛屽叏绔欏墠 10 + 鐢婚鏍搁獙 27 甯栵級`piutahayo`銆乣mochirong`銆乣elocca`銆乣norza`銆乣merunyaa`锛沗nyantcha` / `merunyaa` 杩欑被銆屽悓鎵嬩絾娌＄敾杩?Firefly/Kafka銆嶇殑鐢诲笀锛屾棫鏂规瀹屽叏鐪嬩笉鍒般€?- 鏈€缁堢敾甯堜覆鎸夈€岀敾椋庝紭鍏堝€欓€?鈭?瑙掕壊妯″紡鍊欓€夈€嶇殑浜ら泦涓庡叚椤圭洰瑙嗘牳瀵瑰喅瀹氾紝璇﹁ [docs/case-2026-11-15-15refs.md](docs/case-2026-11-15-15refs.md)銆?
+### 灏忎綋閲忕敾甯堝彂鐜帮紙0.21.0 璧凤紝0.22.0 琛?`seed_artists`锛?
+楂樺垎閿氱偣/pair 鎵弿鍙噰鏍枫€岀儹搴﹀墠鍑犵櫨銆嶇殑浣滃搧锛?*150 甯栫骇鍒殑灏忕敾甯堟案杩滆繘涓嶄簡鍊欓€夋睜**锛堝吀鍨嬶細eigaka锛屽叏绔?167 甯栵紝鏈€楂樺垎鍙湁 776锛夈€傜幇鍦?`style_match` 澧炲姞涓ゆ潯閫氶亾锛?
+1. **style-tag 鍏辩幇锛堣嚜鍔級**锛氬姣忎釜 `style_tags` 璋冧竴娆?`related_tag?category=artist`锛屾嬁鍒般€屾墍鏈夌敾杩囪繖绉嶉鏍?tag 鐨勭敾甯堛€嶏紝涓庣儹搴︽棤鍏筹紱鍙繚鐣欏叏绔?**鈮?`min_artist_posts`锛堥粯璁?50 甯栵級** 鐨勭敾甯堬紱鍊欓€夊瓧娈?`discovered_via_style_cooccurrence` / `artist_posts` / `small_artist` / `reserved_slot`锛宍small_artist_slots`锛堥粯璁?3锛変繚璇佸皬鐢诲笀涓嶈鎸ゅ嚭鍚嶅崟锛涜繑鍥?`small_artist_discovery.top`锛?1000 甯栫殑楂樺垎灏忕敾甯堝墠 10锛?2. **`seed_artists`锛堟樉寮忕偣鍚嶏紝纭畾鎬э級**锛氬叡鐜?API 鍙繑鍥炴瘡涓?tag 鐨?**鍓?100 鍚?*鐢诲笀锛屽儚 eigaka 杩欑銆岀浉鍏冲笘鍒嗘暟閮藉緢浣庛€佸叡鐜伴鐜囦篃浣庛€嶇殑璐﹀彿浠嶄細琚紡鎺夆€斺€旇繖鏃剁洿鎺?`seed_artists="eigaka"`锛屾彃浠朵細鏌ュ畠鐨勫笘鏁帮紙鈮?0 鎵嶇撼鍏ワ級銆佹姄瀹冭嚜宸辩殑浣滃搧绠?style/genre 鍚诲悎搴︼紝骞?*寮哄埗鏀捐繘缁撴灉**锛坄seed_artist: true`銆乣seed_style_overlap`锛?
+鐢ㄦ硶锛?
 ```text
-danbooru_style_match(...)            → ["elocca,mignon,piutahayo"]
-danbooru_artists_from_image(...)     → ["hews,nyantcha,asou"]
-danbooru_similar_artists(artist=...) → ["m-da_s-tarou,sincos,hara"]
+danbooru_style_match(style_tags="shiny_skin, sweat, lace, colored_lineart",
+                     genre_tags="sex, cum", discover_small_artists=true,
+                     min_artist_posts=50, small_artist_slots=3,
+                     seed_artists="eigaka", limit=12)
+```
+
+- 浠ｄ环锛氬叡鐜版瘡涓?style tag +1 璇锋眰锛堟渶澶?3 娆★級锛涙瘡涓?seed +2 璇锋眰锛堝笘鏁?+ 浣滃搧鍚诲悎搴︼級
+
+## 澶氭柟妗堝叡璇嗭紙0.20.0 璧凤級
+
+`danbooru_image_artist_consensus` 瑙ｅ喅銆屽崟鏂规鎬讳細鏈夎鍒ゃ€嶇殑闂锛氬鍚屼竴寮犲弬鑰冨浘璺?2鈥? 涓笉鍚屾柟妗堬紝鍚勮嚜鍙栫煭鍚嶅崟锛屽啀**鍙繚鐣欒 鈮? 涓柟妗堝悓鏃跺懡涓殑鐢诲笀**銆?
+```text
+danbooru_style_match(...)            鈫?["elocca,mignon,piutahayo"]
+danbooru_artists_from_image(...)     鈫?["hews,nyantcha,asou"]
+danbooru_similar_artists(artist=...) 鈫?["m-da_s-tarou,sincos,hara"]
 
 danbooru_image_artist_consensus(
   lists='["elocca,mignon,piutahayo","hews,nyantcha,asou","m-da_s-tarou,sincos,hara"]',
@@ -295,131 +216,89 @@ danbooru_image_artist_consensus(
   min_hits=2, limit=10, examples=3)
 ```
 
-- 每个候选人带 `hits`（被几个方案命中）、`hit_sources`（命中方案名）、`avg_rank`（各方案内的平均名次，越小越靠前）
-- 排序：`hits` 降序 → `avg_rank` 升序 → 画师名
-- **没有画师达到 `min_hits` 时**：返回按 `hits` 排序的部分重叠榜，并设 `fallback_used=true`，提示换更相近的方案或降低门槛
-- 它本身不发检索请求（只为例图发请求），所以很快；先跑各方案再喂给它
-- 局限：共识只能降低随机误判，不能证明画风真的像——最终仍要 `read_image` 目视核对
+- 姣忎釜鍊欓€変汉甯?`hits`锛堣鍑犱釜鏂规鍛戒腑锛夈€乣hit_sources`锛堝懡涓柟妗堝悕锛夈€乣avg_rank`锛堝悇鏂规鍐呯殑骞冲潎鍚嶆锛岃秺灏忚秺闈犲墠锛?- 鎺掑簭锛歚hits` 闄嶅簭 鈫?`avg_rank` 鍗囧簭 鈫?鐢诲笀鍚?- **娌℃湁鐢诲笀杈惧埌 `min_hits` 鏃?*锛氳繑鍥炴寜 `hits` 鎺掑簭鐨勯儴鍒嗛噸鍙犳锛屽苟璁?`fallback_used=true`锛屾彁绀烘崲鏇寸浉杩戠殑鏂规鎴栭檷浣庨棬妲?- 瀹冩湰韬笉鍙戞绱㈣姹傦紙鍙负渚嬪浘鍙戣姹傦級锛屾墍浠ュ緢蹇紱鍏堣窇鍚勬柟妗堝啀鍠傜粰瀹?- 灞€闄愶細鍏辫瘑鍙兘闄嶄綆闅忔満璇垽锛屼笉鑳借瘉鏄庣敾椋庣湡鐨勫儚鈥斺€旀渶缁堜粛瑕?`read_image` 鐩鏍稿
 
-## 部位特化搜索（画手 / 画脚 / 画腿…）
+## 閮ㄤ綅鐗瑰寲鎼滅储锛堢敾鎵?/ 鐢昏剼 / 鐢昏吙鈥︼級
 
-`danbooru_part_specialists` 用 D 站的**部位焦点 tag** 检索「该部位 + 高收藏」作品，再按画师聚合，专门回答「谁画手/脚/腿/眼睛画得好」这类问题。
+`danbooru_part_specialists` 鐢?D 绔欑殑**閮ㄤ綅鐒︾偣 tag** 妫€绱€岃閮ㄤ綅 + 楂樻敹钘忋€嶄綔鍝侊紝鍐嶆寜鐢诲笀鑱氬悎锛屼笓闂ㄥ洖绛斻€岃皝鐢绘墜/鑴?鑵?鐪肩潧鐢诲緱濂姐€嶈繖绫婚棶棰樸€?
+- `part` 鍙€夛細`hands`銆乣feet`銆乣thighs`銆乣legs`銆乣ass`銆乣breasts`銆乣hips`銆乣eyes`銆乣mouth`銆乣back`銆乣armpits`銆乣navel`銆乣belly`銆乣abs`銆乣hair`銆乣neck`銆乣pectorals`
+- 姣忎釜閮ㄤ綅鍙栧墠涓や釜 tag锛堝 `hand_focus` + `hands`锛夛紝鎸?`order:favcount` 鍚勬壂涓€閬嶏紙榛樿 100 鏉★級锛岀粺璁＄敾甯堝湪璇ラ儴浣嶄綔鍝佷笂鐨?*鏀惰棌鎬绘暟**
+- `rank_by`锛歚total_favorites`锛堥粯璁わ紝鏀惰棌鎬婚噺锛? `avg_favorites`锛堝崟鍥惧潎鍊硷級/ `posts`锛堜綔鍝佹暟閲忥級
+- `min_posts`锛氱敾甯堣嚦灏戣鏈夊嚑寮犻儴浣嶄綔鍝佹墠鍏ユ锛堥粯璁?2锛?- 鍚屾椂杩斿洖 `posts`锛氳閮ㄤ綅 tag 涓嬫敹钘忔渶楂樼殑鍥剧墖锛堥粯璁?6 寮狅紝鍚?`sample_url`锛?- 鍙€夊浘鐗囷紝瑙嗛鑷姩杩囨护锛沗year` 鍙檺瀹氬勾浠斤紙榛樿鍏ㄦ椂闂达級
+- 鐢ㄦ硶锛歚danbooru_part_specialists(part="hands", year=2025, rank_by="total_favorites", artists_limit=10, posts_limit=8)`
+- 灞€闄愶細渚濊禆浣滆€呮墦浜嗛儴浣嶇劍鐐?tag锛屾病鎵?tag 鐨勫ソ鍥句細婕忥紱鏈€缁堜粛闇€鐩纭閮ㄤ綅鐢绘硶
 
-- `part` 可选：`hands`、`feet`、`thighs`、`legs`、`ass`、`breasts`、`hips`、`eyes`、`mouth`、`back`、`armpits`、`navel`、`belly`、`abs`、`hair`、`neck`、`pectorals`
-- 每个部位取前两个 tag（如 `hand_focus` + `hands`），按 `order:favcount` 各扫一遍（默认 100 条），统计画师在该部位作品上的**收藏总数**
-- `rank_by`：`total_favorites`（默认，收藏总量）/ `avg_favorites`（单图均值）/ `posts`（作品数量）
-- `min_posts`：画师至少要有几张部位作品才入榜（默认 2）
-- 同时返回 `posts`：该部位 tag 下收藏最高的图片（默认 6 张，含 `sample_url`）
-- 只选图片，视频自动过滤；`year` 可限定年份（默认全时间）
-- 用法：`danbooru_part_specialists(part="hands", year=2025, rank_by="total_favorites", artists_limit=10, posts_limit=8)`
-- 局限：依赖作者打了部位焦点 tag，没打 tag 的好图会漏；最终仍需目视确认部位画法
+## 杈撳嚭绾﹀畾锛堢敾甯?vs 鍥剧墖锛?
+- **鐢诲笀鍒楄〃**锛氭瘡浣嶇敾甯堜繚鐣?**3 寮犱緥鍥?*锛堜笉鍚屼綔鍝侊級锛屽苟**鍒嗚绾靛悜鎺掔増**锛堟瘡浜轰竴涓潡锛氭覆鏌?/ 浣撴€?/ 闈㈤儴 / 涓婚〉 / 渚嬪浘锛夛紝涓嶈鐢ㄥ琛ㄦ牸锛岄伩鍏嶈妯悜瑁佸垏
+- **渚嬪浘杞鍒?*锛氶粯璁や紭鍏堝彇銆屽甫闇€姹?tag锛堣〃鎯?浣撳瀷锛? 鑳界湅鍒拌劯銆嶇殑浣滃搧锛涘彧鏈夌敤鎴锋槑纭姹傝儗褰便€佸壀褰便€佷笅鍗婅韩鐗瑰啓绛夋棤鑴告瀯鍥炬椂锛屾墠浼?`allow_no_face=true` 鍏佽鏃犺劯渚嬪浘锛沗example_tags` 鍙鐩栭渶姹?tag銆俙danbooru_similar_artists` 鐨?`examples` 浼氳繑鍥?`matched_tags` 渚夸簬鏍稿
+- **姘旇川闄嶆潈**锛氱浉浼煎害璁＄畻閲?`furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 鐨勬潈閲嶄箻 **0.05**锛岄伩鍏嶅吔鍚戦鏉愭媺鍔ㄧ敾甯堢浉浼煎害
+- **閬垮厤杩囧害鍐欏疄/3D**锛歚3d`銆乣photorealistic`銆乣faux_3d` 杩欑被 tag 鍦ㄧ浉浼煎害涓檷鏉冨埌 0.05锛涗互鍥炬悳鐢诲笀浼氭寜鍊欓€夌殑 3D 浣滃搧鍗犳瘮鎵ｅ垎锛堣繑鍥?`three_d_share`锛夛紱渚嬪浘鍜岄儴浣嶇壒鍖栫粨鏋滀紭鍏堟帓闄?3D 浣滃搧锛堟壘涓嶅埌 2D 鍥炬椂鎵嶅洖閫€锛?- **鍥剧墖鍒楄〃**锛氭瘡寮犲浘淇濈暀 **1 寮犳牱鍥?*鍗冲彲
+- **鐢婚鐩镐技鍒ゅ畾缁村害**锛堢洰瑙嗭紝涓嶅彧鐪?tag锛夛細
+  1. **娓叉煋**锛氫笂鑹?杞‖闃村奖銆侀珮鍏変笌鏉愯川锛堜钩鑳躲€佷寒闈㈠竷鏂欙級銆侀ケ鍜屽害涓庤壊璋?  2. **浣撴€?*锛氳兏鑵拌噣/鑵挎瘮渚嬨€佽倝鎰熶笌鑴傝偑鍒嗗竷銆佽韩楂樹綋鍨嬨€佸父鐢ㄥЭ鎬?  3. **闈㈤儴鐗瑰緛涓庤〃鎯?*锛氳劯鍨嬨€佺溂鍨?鐪艰窛/鐬冲瓟楂樺厜銆侀蓟鍢寸敾娉曘€佽叜绾€佸父鐢ㄨ〃鎯咃紙绗?鍗婇棴鐪?鍚愯垖/瀹崇緸绛夛級
+  4. **鏋勫浘**锛氱珛缁?澶氳鍥?杩戞櫙瑁佸垏绛?
+## 鍑嵁锛堢櫥褰曞悗瑙ｉ櫎 2-tag 闄愬埗锛?
+璋冪敤 `danbooru_save_credentials` 鎻愪緵 `login` 涓?`apiKey`锛氬€煎啓鍏?DSH 鍑嵁搴擄紙`$DSH_HOME/.credentials.yaml`锛屼粎褰撳墠绯荤粺鐢ㄦ埛鍙锛夛紝涓嶄細鍑虹幇鍦ㄦ彃浠堕厤缃垨宸ュ叿杩斿洖鍊奸噷銆傛彃浠舵瘡娆¤姹傞兘浼氶噸鏂拌В鏋愬嚟鎹紝淇濆瓨鍚庣珛鍗崇敓鏁堛€佹棤闇€閲嶅惎銆?
+- 鏌ョ湅鐘舵€侊細`danbooru_auth_status`锛堝彧鎶?configured / source / writable锛屼笉杩斿洖鍊硷級
+- 绉婚櫎锛歚danbooru_save_credentials({ clear: true })`
+- 涔熷彲浠ョ敤鐜鍙橀噺 `DANBOORU_LOGIN` / `DANBOORU_API_KEY`锛堝惎鍔ㄧ幆澧冩垨 `$DSH_HOME/.env`锛夛紱鍑嵁搴撲腑鐨勫€间紭鍏堛€?
+## 鍚堣涓庨檺閫燂紙鍐呭缓锛?
+- 姣忎釜璇锋眰閮藉甫鍙瘑鍒?`User-Agent`锛歚dsh-danbooru-tools/0.23.0 (DeepSeek Harness; <contact>)`銆?- 鎵€鏈夎姹傝蛋**鍗曚竴涓茶闂搁棬**锛氬尶鍚嶉粯璁ら棿闅?1.1 绉掞紱妫€娴嬪埌宸蹭繚瀛樺嚟鎹椂鑷姩鍒囨垚 0.4 绉掞紙绾?2.5 娆?绉掞紝浠嶅彧鏈?D 绔?10 娆?绉掍笂闄愮殑 1/4锛屽璇锋眰宸ュ叿鏁翠綋蹇害 2鈥?.7 鍊嶏級锛涢亣鍒?429 浼氭寜 `Retry-After` 閫€閬块噸璇曚竴娆°€?- 缁撴灉鏈夊唴瀛?TTL 缂撳瓨锛堜綔鍝?5 鍒嗛挓 / 鑷姩琛ュ叏 6 灏忔椂 / 鐩稿叧 tag 1 灏忔椂 / wiki 24 灏忔椂锛夛紝鍑忓皯閲嶅璇锋眰銆?- **瀵?Danbooru 鍙**锛氬彧鍙?GET 璇锋眰锛屼笉鐐硅禐銆佷笉鏀惰棌銆佷笉涓婁紶銆佷笉鍐?profile锛涗笉浜х敓浠讳綍瀵圭珯鐐圭殑鍐欏叆銆?
+## 閰嶇疆
 
-## 输出约定（画师 vs 图片）
-
-- **画师列表**：每位画师保留 **3 张例图**（不同作品），并**分行纵向排版**（每人一个块：渲染 / 体态 / 面部 / 主页 / 例图），不要用宽表格，避免被横向裁切
-- **例图软规则**：默认优先取「带需求 tag（表情/体型）+ 能看到脸」的作品；只有用户明确要求背影、剪影、下半身特写等无脸构图时，才传 `allow_no_face=true` 允许无脸例图；`example_tags` 可覆盖需求 tag。`danbooru_similar_artists` 的 `examples` 会返回 `matched_tags` 便于核对
-- **气质降权**：相似度计算里 `furry` / `furry_female` / `furry_male` / `anthro` / `humanoid_furry` 的权重乘 **0.05**，避免兽向题材拉动画师相似度
-- **避免过度写实/3D**：`3d`、`photorealistic`、`faux_3d` 这类 tag 在相似度中降权到 0.05；以图搜画师会按候选的 3D 作品占比扣分（返回 `three_d_share`）；例图和部位特化结果优先排除 3D 作品（找不到 2D 图时才回退）
-- **图片列表**：每张图保留 **1 张样图**即可
-- **画风相似判定维度**（目视，不只看 tag）：
-  1. **渲染**：上色/软硬阴影、高光与材质（乳胶、亮面布料）、饱和度与色调
-  2. **体态**：胸腰臀/腿比例、肉感与脂肪分布、身高体型、常用姿态
-  3. **面部特征与表情**：脸型、眼型/眼距/瞳孔高光、鼻嘴画法、腮红、常用表情（笑/半闭眼/吐舌/害羞等）
-  4. **构图**：立绘/多视图/近景裁切等
-
-## 凭据（登录后解除 2-tag 限制）
-
-调用 `danbooru_save_credentials` 提供 `login` 与 `apiKey`：值写入 DSH 凭据库（`$DSH_HOME/.credentials.yaml`，仅当前系统用户可读），不会出现在插件配置或工具返回值里。插件每次请求都会重新解析凭据，保存后立即生效、无需重启。
-
-- 查看状态：`danbooru_auth_status`（只报 configured / source / writable，不返回值）
-- 移除：`danbooru_save_credentials({ clear: true })`
-- 也可以用环境变量 `DANBOORU_LOGIN` / `DANBOORU_API_KEY`（启动环境或 `$DSH_HOME/.env`）；凭据库中的值优先。
-
-## 合规与限速（内建）
-
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.20.0 (DeepSeek Harness; <contact>)`。
-- 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
-- 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
-- **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
-
-## 配置
-
-全部可选。可用环境变量或 bundle patch 的 `config` 提供：
-
-| 键 | 默认 | 说明 |
+鍏ㄩ儴鍙€夈€傚彲鐢ㄧ幆澧冨彉閲忔垨 bundle patch 鐨?`config` 鎻愪緵锛?
+| 閿?| 榛樿 | 璇存槑 |
 |---|---|---|
-| `contact` | 空 | 加进 User-Agent 的身份说明，建议填 `user #12345` 或邮箱 |
-| `minIntervalMs` | `1100` | 匿名请求的启动间隔（毫秒） |
-| `minIntervalMsAuthenticated` | `400` | 已保存凭据时的启动间隔（毫秒），必须小于站点限速 |
-| `timeoutMs` | `20000` | 单请求超时 |
-| `cacheTtlMs` | `600000` | 内存缓存寿命；`0` 关闭缓存 |
-| `defaultRating` | `all` | 默认分级；`all` 含 R18，`g` 只看全年龄 |
-| `maxWikiChars` | `4000` | `danbooru_get_tag` 返回的 wiki 摘要上限 |
+| `contact` | 绌?| 鍔犺繘 User-Agent 鐨勮韩浠借鏄庯紝寤鸿濉?`user #12345` 鎴栭偖绠?|
+| `minIntervalMs` | `1100` | 鍖垮悕璇锋眰鐨勫惎鍔ㄩ棿闅旓紙姣锛?|
+| `minIntervalMsAuthenticated` | `400` | 宸蹭繚瀛樺嚟鎹椂鐨勫惎鍔ㄩ棿闅旓紙姣锛夛紝蹇呴』灏忎簬绔欑偣闄愰€?|
+| `timeoutMs` | `20000` | 鍗曡姹傝秴鏃?|
+| `cacheTtlMs` | `600000` | 鍐呭瓨缂撳瓨瀵垮懡锛沗0` 鍏抽棴缂撳瓨 |
+| `defaultRating` | `all` | 榛樿鍒嗙骇锛沗all` 鍚?R18锛宍g` 鍙湅鍏ㄥ勾榫?|
+| `maxWikiChars` | `4000` | `danbooru_get_tag` 杩斿洖鐨?wiki 鎽樿涓婇檺 |
 
-环境变量：
-
-| 变量 | 说明 |
+鐜鍙橀噺锛?
+| 鍙橀噺 | 璇存槑 |
 |---|---|
-| `DANBOORU_LOGIN` | Danbooru 用户名；与 API key 同时提供时提高限额（匿名最多 2 个 tag） |
-| `DANBOORU_API_KEY` | 个人页的 API key |
-| `DANBOORU_USER_AGENT` | 完整覆盖 User-Agent（仍要保留可识别身份） |
-| `DANBOORU_CONTACT` | 等同 `contact` 配置项 |
-| `DANBOORU_MIN_INTERVAL_MS` | 等同 `minIntervalMs` |
-| `DANBOORU_MIN_INTERVAL_AUTH_MS` | 等同 `minIntervalMsAuthenticated` |
+| `DANBOORU_LOGIN` | Danbooru 鐢ㄦ埛鍚嶏紱涓?API key 鍚屾椂鎻愪緵鏃舵彁楂橀檺棰濓紙鍖垮悕鏈€澶?2 涓?tag锛?|
+| `DANBOORU_API_KEY` | 涓汉椤电殑 API key |
+| `DANBOORU_USER_AGENT` | 瀹屾暣瑕嗙洊 User-Agent锛堜粛瑕佷繚鐣欏彲璇嗗埆韬唤锛?|
+| `DANBOORU_CONTACT` | 绛夊悓 `contact` 閰嶇疆椤?|
+| `DANBOORU_MIN_INTERVAL_MS` | 绛夊悓 `minIntervalMs` |
+| `DANBOORU_MIN_INTERVAL_AUTH_MS` | 绛夊悓 `minIntervalMsAuthenticated` |
 
-改 `config` 需要改本目录的 `cordis.patch.yml` 并重装 bundle；改环境变量则重启 DSH 即可。
-
-## 自检
+鏀?`config` 闇€瑕佹敼鏈洰褰曠殑 `cordis.patch.yml` 骞堕噸瑁?bundle锛涙敼鐜鍙橀噺鍒欓噸鍚?DSH 鍗冲彲銆?
+## 鑷
 
 ```bash
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、多方案共识等 59 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
+浼氱湡瀹炶姹傚悇鏌ヨ宸ュ叿锛堝伐鍏锋敞鍐屻€佸嚟鎹檷绾с€佸勾浠借繃婊ゃ€佷笁绾у姞鏉冦€佹暣骞存€绘敹钘忋€侀鏍奸椄闂ㄣ€佷汉浣撻檮鍔犲弬鑰冦€佹暣浣撹壊璋冨弬鑰冦€佽〃鎯呯敾鍍忎笌浣欏鸡銆佷緥鍥捐蒋瑙勫垯銆侀儴浣嶇壒鍖栥€佺嚎鏉?鎵嬫硶/鏈嶈鏉愯川鏁堟灉鏉冮噸銆佽鑹茶韩浠借繃婊ゃ€佸崟缁村害闄嶆潈銆佹暣浣撶敾椋庡尮閰嶇殑閿氱偣/鍚岃鑹?娓呭崟銆佺敾椋庝紭鍏堝拷鐣ヨ鑹层€佸皬浣撻噺鐢诲笀鍏辩幇涓?seed 鐐瑰悕銆佸鏂规鍏辫瘑绛?62 椤规鏌ワ級骞舵牎楠岃繑鍥炵粨鏋勪笌鎺掑簭锛岀害 3鈥? 鍒嗛挓锛堝彈涓茶闄愰€熷奖鍝嶏級銆備笉浜х敓鍐欏叆銆?
+## 宸茬煡闄愬埗
 
-## 已知限制
-
-- 匿名搜索最多 2 个 tag（Danbooru 服务端限制）；错误信息会提示加凭据。
-- 只读 ≠ 不能看图：插件只读 Danbooru、不提供图片下载工具，但**返回作品/样本 URL**（`urls.sample`、`preview_url` 等）。目视核验时由 Agent 用 `curl` / `pwsh` 从这些 URL 临时下载到本地、看完即删；插件自身不发起图片下载。
-
-### 图片核验（Agent 侧工作流）
-
-1. 用 `danbooru_search_posts`（`urls.sample`）或 `danbooru_year_artists`（`best` / `newest` / `style.best` 里的 `sample_url`）拿到可下载的样图 URL；
-2. 用 `curl` 下载（CDN 有防盗链，**必须带 Referer**，否则 403）：
+- 鍖垮悕鎼滅储鏈€澶?2 涓?tag锛圖anbooru 鏈嶅姟绔檺鍒讹級锛涢敊璇俊鎭細鎻愮ず鍔犲嚟鎹€?- 鍙 鈮?涓嶈兘鐪嬪浘锛氭彃浠跺彧璇?Danbooru銆佷笉鎻愪緵鍥剧墖涓嬭浇宸ュ叿锛屼絾**杩斿洖浣滃搧/鏍锋湰 URL**锛坄urls.sample`銆乣preview_url` 绛夛級銆傜洰瑙嗘牳楠屾椂鐢?Agent 鐢?`curl` / `pwsh` 浠庤繖浜?URL 涓存椂涓嬭浇鍒版湰鍦般€佺湅瀹屽嵆鍒狅紱鎻掍欢鑷韩涓嶅彂璧峰浘鐗囦笅杞姐€?
+### 鍥剧墖鏍搁獙锛圓gent 渚у伐浣滄祦锛?
+1. 鐢?`danbooru_search_posts`锛坄urls.sample`锛夋垨 `danbooru_year_artists`锛坄best` / `newest` / `style.best` 閲岀殑 `sample_url`锛夋嬁鍒板彲涓嬭浇鐨勬牱鍥?URL锛?2. 鐢?`curl` 涓嬭浇锛圕DN 鏈夐槻鐩楅摼锛?*蹇呴』甯?Referer**锛屽惁鍒?403锛夛細
    `curl.exe -L -e "https://danbooru.donmai.us/" -o sample.jpg "<sample_url>"`
-3. 用 `read_image` 查看；核验完删除临时文件（不进入插件目录、不长期保存）。
+3. 鐢?`read_image` 鏌ョ湅锛涙牳楠屽畬鍒犻櫎涓存椂鏂囦欢锛堜笉杩涘叆鎻掍欢鐩綍銆佷笉闀挎湡淇濆瓨锛夈€?
+- 鎻掍欢娌℃湁銆屾壒閲忎笅杞藉浘鐗囥€嶇殑宸ュ叿锛涗笅杞藉彂鐢熷湪 Agent 鐨?shell 渚э紝灞炰簬浼氳瘽涓存椂鎿嶄綔锛屼笉鏄彃浠惰兘鍔涖€?- 鍐呭鍒嗙骇**榛樿杩斿洖鍏ㄩ儴锛堝惈 R18锛?*锛涢渶瑕佸叏骞撮緞鍐呭鏃舵樉寮忎紶 `rating="g"`锛岀粨鏋滃彲鑳戒笉閫傚悎鎵€鏈夊満鏅€?- **鍙繑鍥炲浘鐗?*锛氭墍鏈夊伐鍏烽兘浼氳繃婊ゆ帀瑙嗛涓庡姩鐢讳綔鍝侊紙`mp4`/`webm`/`mkv`/`mov`/`avi`/`m4v`銆乽goira 鐨?`zip`锛屼互鍙?`meta` 閲屽甫 `ugoira`/`video` 鐨勫笘瀛愶級锛屾悳绱€佺敾甯堝弬鑰冨浘銆佷緥鍥鹃兘鍙粰闈欐€佸浘锛沗danbooru_get_post` 鎸?id 鏌ヨ闄ゅ锛堟樉寮忚姹備粛鍙湅鍒板師甯栦俊鎭級
+- wiki 鎽樿鏄埅鏂悗鐨勭函鏂囨湰锛屼繚鐣欎簡 Danbooru 鐨?wiki 鏍囪锛堝 `[[tag]]`锛夛紝涓嶆槸娓叉煋鍚庣殑瀵屾枃鏈€?
+## 鏇存柊璁板綍
 
-- 插件没有「批量下载图片」的工具；下载发生在 Agent 的 shell 侧，属于会话临时操作，不是插件能力。
-- 内容分级**默认返回全部（含 R18）**；需要全年龄内容时显式传 `rating="g"`，结果可能不适合所有场景。
-- **只返回图片**：所有工具都会过滤掉视频与动画作品（`mp4`/`webm`/`mkv`/`mov`/`avi`/`m4v`、ugoira 的 `zip`，以及 `meta` 里带 `ugoira`/`video` 的帖子），搜索、画师参考图、例图都只给静态图；`danbooru_get_post` 按 id 查询除外（显式请求仍可看到原帖信息）
-- wiki 摘要是截断后的纯文本，保留了 Danbooru 的 wiki 标记（如 `[[tag]]`），不是渲染后的富文本。
-
-## 更新记录
-
-- **0.20.0**：新增 `danbooru_image_artist_consensus`（**多方案共识**）——融合 style_match / artists_from_image / similar_artists 等多份候选名单，只保留被 ≥`min_hits` 个方案命中的画师；带 `hits`/`hit_sources`/`avg_rank`，无交集时返回部分重叠榜并标 `fallback_used`；`verify.mjs` 增加 1 项自检（共 59 项）
-- **0.19.1**：`clothing` 维度明确改为「**服装材质效果**」——只衡量反光/高光、透明度、湿身、蕾丝/丝绸厚度与褶皱；服装款式名词（`lingerie`、`bra`、`shirt`…）作为身份特征被过滤，不再影响该项权重；文档与参数说明同步
-- **0.19.0**：按「整体画风匹配（style_match）」的实测结论优化识图——README 把 `danbooru_style_match` 定为以图搜画师首选、`artists_from_image` 降为交叉验证；`artists_from_image` 新增**单维度证据降权**（多维度搜索时 ×0.55，输出 `single_dimension` / `dimensions_used`），修掉「只靠 lineart 像就上榜」的问题
-- **0.18.1**：`artists_from_image` 不再把**角色身份/装饰特征**当成画风证据——发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）在评分前剔除并返回 `excluded_identity_tags`；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。全部 tag 都是身份特征时明确报错，提示改传绘制手法类 tag
-- **0.18.0**：`danbooru_style_match` 支持**多角色**——`character` 可传逗号分隔的多个角色（最多 3 个，前两个各跑全站高分锚点并参与同角色核验）；新增 `reference.characters` 与 `same_character_breakdown`（逐角色作品数，总数仍为 `same_character_posts`）；`verify.mjs` 增加多角色自检；README 增加「多张参考图 / 多角色」工作流与 15 图案例
-- **0.17.0**：新增 `danbooru_style_match`（整体画风匹配）：角色锚定 + 全站高分 `order:score` 扫描（名次衰减加权）+ `角色×题材/画风`、`画风×题材` pair 兜底 + `画师×角色` 同角色核验 + 例图；输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代参数，返回新增 `anchor_scans`、`anchor_score`/`pair_score`/`chart_top` 字段（全站前 10 名作品额外 ×1.3）；`verify.mjs` 增加 5 项自检
-- **0.16.1**：README 在「宇宙免责声明」与「安装」之间新增「大致使用教程（截图版）」三张示例图（以图搜画师 / 按年份找色彩艳丽作品 / 相似画师+年份限定），图片存于 `docs/tutorial/`
-- **0.16.0**：`artists_from_image` 新增 **服装质感** 维度 `clothing_tags`（person 0.10 / style 0.12，专吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 等材质 tag）；线条/手法权重微调（person 0.18/0.22、style 0.24/0.28），其余维度等比下调，总和仍为 1
-- **0.15.2**：加强线条与绘制手法的参考权重——`artists_from_image` person 模式 lineart 0.12→**0.20**、technique 0.20→**0.24**；style 模式 lineart 0.18→**0.26**、technique 0.26→**0.30**（其余维度等比下调，总和仍为 1）
-- **0.15.1**：性能优化——登录后自动使用 0.4 秒限速间隔（匿名仍 1.1 秒），多请求工具整体快约 2–2.7 倍（实测 12 请求的 `year_artists` 12.8s → 6.4s）；新增 `minIntervalMsAuthenticated` / `DANBOORU_MIN_INTERVAL_AUTH_MS`；其他行为、输出与排序不变
-- **0.15.0**：借鉴以图搜图的「近重复聚类」——以 `parent_id`/`md5` 把同一张画的不同变体（改色、裁切、variant 帖）归为一个视觉簇；`artists_from_image` 按簇去重后再聚合证据，例图只取不同簇；`part_specialists` 也按簇折叠重复图；输出增加 `dedupe` 与每组 `unique_clusters` / `deduped_posts`
-- **0.14.0**：眼睛色彩从「人体附加参考」中移除；新增「整体色调参考」`color_tags` / `color_match` / `color_threshold`（`monochrome`、`limited_palette`、`pastel_colors`、`blue_theme`、`colorful`、`iridescent` 等），返回 `color.per_tag` 与 `color.best` 参考图
-- **0.13.0**：`danbooru_year_artists` 新增「人体附加参考」`appearance_tags` / `appearance_match` / `appearance_threshold`：在同一批核验作品上统计肤色、皮肤质感 tag（`per_tag` 命中数 + `ratio` + `appearance.best` 参考图），可只统计或按比例加闸门
-- **0.12.2**：插件标题/介绍统一加 `DSH-` 前缀，并明确标注「DSH bundle，不是可独立运行的程序」
-- **0.12.1**：仓库转为公开；README 与插件介绍标注「AI 制作」；安装章节拆分为「下载包 / git clone + link / 源码 zip」三种方案；新增「宇宙免责声明」（跑路条款）
-- **0.12.0**：过滤/降权 3D 渲染（`3d`/`photorealistic`/`faux_3d`）：相似度降权 0.05、以图搜画师按 `three_d_share` 扣分、例图与部位图优先排除 3D
-- **0.11.0**：以图搜画师新增 `lineart_tags`（线条）与 `lighting_tags`（光照）维度，且每个维度最多 4 个 tag 全部参与检索（之前只查前两个），线条/色彩/光照正式进入评分
-- **0.10.1**：以图搜画师默认不限年份（`year` 不填=全时间），修复输出里的非 JSON 值导致 `not lossless JSON` 的问题
-- **0.10.0**：新增 `danbooru_part_specialists`（部位特化：按部位焦点 tag 的高收藏作品聚合画师排名 + 部位高收藏图片）
-- **0.9.1**：全工具只返回图片（过滤 `mp4`/`webm` 等视频；搜索、画师参考图、例图均跳过视频）
-- **0.9.0**：新增 `danbooru_artists_from_image`（以图搜画师，分层优先级：人物→表情→绘制手法→色彩→tag；`mode="style"` 时手法/色彩优先）
-- **0.8.3**：清理过时文档（重复的安装章节、旧的自检耗时、工具数量），DSH 内与仓库说明同步为当前能力（表情画像/余弦、例图软规则、furry 降权）
-- **0.8.2**：例图改为软规则（默认优先带脸，`allow_no_face=true` 放行无脸构图）；`furry` 类 tag 相似度权重 ×0.05；过滤无 `sample_url` 的例图
-- **0.8.1**：例图强制匹配需求 tag 并跳过隐藏脸的构图（已由 0.8.2 改为软规则）
-- **0.8.0**：相似画师新增表情画像、表情 tag 扩展、稀有度加权表情余弦与风格重叠检查
-- **0.7.2**：例图按需附带样图 URL（`examples`）
-- **0.7.0**：新增 `danbooru_similar_artists`（tag 画像相似画师）
+- **0.23.0**锛歚style_match` 鏀逛负**鐢婚浼樺厛锛坰tyle-first锛?*鈥斺€旈粯璁?`mode="style"` **涓嶄娇鐢ㄨ鑹?tag**锛堝悓瑙掕壊鈮犲悓鐢婚锛涘疄娴嬫棫鐨勮鑹查敋瀹氭紡鎺?`nyantcha`/`merunyaa` 杩欑被鍚屾墜鐢诲笀锛夛紝鏂板 `subject_tags`锛堜綋鍨?鑲よ壊/鑴?琛ㄦ儏绛夈€屼汉鐗╃被鍨嬨€嶏紝涓嶆槸韬唤锛夈€乣mode="character"` 鎵嶇敤瑙掕壊閿氱偣锛沺air 鏀逛负 `鐢婚脳鐢婚`/`鐢婚脳浜虹墿绫诲瀷`/`鐢婚脳棰樻潗`/`浜虹墿绫诲瀷脳棰樻潗`锛屾牳楠屾敼涓?`鐢诲笀脳閿氱偣鐢婚 tag`锛坄style_posts`锛夛紝鎺掑簭 `0.45 閿氱偣 + 0.18 pair + 0.15 鐢婚鏍搁獙 + 0.1 鍏辩幇 + 0.12 seed`锛涜緭鍑烘柊澧?`reference.mode` / `reference.subject_tags` / `candidates[].style_posts`锛沗verify.mjs` 澧炲姞銆宻tyle 妯″紡蹇界暐瑙掕壊銆嶈嚜妫€锛堝叡 62 椤癸級锛汻EADME 閲嶅啓銆屾暣浣撶敾椋庡尮閰嶃€嶇珷鑺?- **0.22.0**锛歚style_match` 鏂板 **`seed_artists` 鏄惧紡鐐瑰悕绉?*鈥斺€斿叡鐜?API 鍙鐩栨瘡涓?style tag 鍓?100 鍚嶇敾甯堬紝eigaka 杩欑銆岀浉鍏冲笘鍒嗘暟浣庛€佸叡鐜伴鐜囦綆銆嶇殑 167 甯栧皬鍙蜂粛浼氭紡锛涚幇鍦ㄥ彲 `seed_artists="eigaka"` 寮哄埗绾冲叆锛堝厛鏍￠獙 鈮min_artist_posts`锛屽啀鎶撳叾浣滃搧绠?style/genre 鍚诲悎搴︼紝杈撳嚭 `seed_artist` / `seed_style_overlap`锛夛紱鍚屾椂淇灏忕敾甯堜繚鐣欏悕棰濆彧鍒嗛厤缁?<1000 甯栫殑璐﹀彿锛屽苟鍦?`small_artist_discovery.top` 鍒楀嚭鍏辩幇鍙戠幇鐨勫皬鐢诲笀鍓?10锛沗verify.mjs` 澧炲姞 1 椤硅嚜妫€锛堝叡 61 椤癸級
+- **0.21.0**锛歚style_match` 鏂板**灏忎綋閲忕敾甯堝彂鐜?*鈥斺€攕tyle-tag 鍏辩幇锛坮elated_tag锛夐€氶亾鎶婁綆浜庣儹搴﹂棬妲涚殑灏忕敾甯堬紙濡?eigaka锛?67 甯栵級鎷夎繘鍊欓€夛紱`min_artist_posts`锛堥粯璁?50锛夎繃婊よ繃灏忚处鍙凤紝`small_artist_slots`锛堥粯璁?3锛変繚璇佸畠浠笉琚尋鍑哄悕鍗曪紝鍊欓€夎緭鍑?`discovered_via_style_cooccurrence` / `artist_posts` / `small_artist` / `reserved_slot`锛沗verify.mjs` 澧炲姞 1 椤硅嚜妫€
+- **0.20.0**锛氭柊澧?`danbooru_image_artist_consensus`锛?*澶氭柟妗堝叡璇?*锛夆€斺€旇瀺鍚?style_match / artists_from_image / similar_artists 绛夊浠藉€欓€夊悕鍗曪紝鍙繚鐣欒 鈮min_hits` 涓柟妗堝懡涓殑鐢诲笀锛涘甫 `hits`/`hit_sources`/`avg_rank`锛屾棤浜ら泦鏃惰繑鍥為儴鍒嗛噸鍙犳骞舵爣 `fallback_used`锛沗verify.mjs` 澧炲姞 1 椤硅嚜妫€
+- **0.19.1**锛歚clothing` 缁村害鏄庣‘鏀逛负銆?*鏈嶈鏉愯川鏁堟灉**銆嶁€斺€斿彧琛￠噺鍙嶅厜/楂樺厜銆侀€忔槑搴︺€佹箍韬€佽暰涓?涓濈桓鍘氬害涓庤ざ鐨憋紱鏈嶈娆惧紡鍚嶈瘝锛坄lingerie`銆乣bra`銆乣shirt`鈥︼級浣滀负韬唤鐗瑰緛琚繃婊わ紝涓嶅啀褰卞搷璇ラ」鏉冮噸锛涙枃妗ｄ笌鍙傛暟璇存槑鍚屾
+- **0.19.0**锛氭寜銆屾暣浣撶敾椋庡尮閰嶏紙style_match锛夈€嶇殑瀹炴祴缁撹浼樺寲璇嗗浘鈥斺€擱EADME 鎶?`danbooru_style_match` 瀹氫负浠ュ浘鎼滅敾甯堥閫夈€乣artists_from_image` 闄嶄负浜ゅ弶楠岃瘉锛沗artists_from_image` 鏂板**鍗曠淮搴﹁瘉鎹檷鏉?*锛堝缁村害鎼滅储鏃?脳0.55锛岃緭鍑?`single_dimension` / `dimensions_used`锛夛紝淇帀銆屽彧闈?lineart 鍍忓氨涓婃銆嶇殑闂
+- **0.18.1**锛歚artists_from_image` 涓嶅啀鎶?*瑙掕壊韬唤/瑁呴グ鐗瑰緛**褰撴垚鐢婚璇佹嵁鈥斺€斿彂鑹层€佺灣鑹层€佽銆佸厜鐜€佸吔鑰炽€佸熬宸淬€侀グ鍝併€佹湇瑁呭悕璇嶏紙`lingerie`銆乣bra`銆乣shirt`鈥︼級鍦ㄨ瘎鍒嗗墠鍓旈櫎骞惰繑鍥?`excluded_identity_tags`锛涙潗璐?tag锛坄latex`銆乣lace`銆乣see-through_clothes`锛変繚鐣欍€傚叏閮?tag 閮芥槸韬唤鐗瑰緛鏃舵槑纭姤閿欙紝鎻愮ず鏀逛紶缁樺埗鎵嬫硶绫?tag
+- **0.18.0**锛歚danbooru_style_match` 鏀寔**澶氳鑹?*鈥斺€擿character` 鍙紶閫楀彿鍒嗛殧鐨勫涓鑹诧紙鏈€澶?3 涓紝鍓嶄袱涓悇璺戝叏绔欓珮鍒嗛敋鐐瑰苟鍙備笌鍚岃鑹叉牳楠岋級锛涙柊澧?`reference.characters` 涓?`same_character_breakdown`锛堥€愯鑹蹭綔鍝佹暟锛屾€绘暟浠嶄负 `same_character_posts`锛夛紱`verify.mjs` 澧炲姞澶氳鑹茶嚜妫€锛汻EADME 澧炲姞銆屽寮犲弬鑰冨浘 / 澶氳鑹层€嶅伐浣滄祦涓?15 鍥炬渚?- **0.17.0**锛氭柊澧?`danbooru_style_match`锛堟暣浣撶敾椋庡尮閰嶏級锛氳鑹查敋瀹?+ 鍏ㄧ珯楂樺垎 `order:score` 鎵弿锛堝悕娆¤“鍑忓姞鏉冿級+ `瑙掕壊脳棰樻潗/鐢婚`銆乣鐢婚脳棰樻潗` pair 鍏滃簳 + `鐢诲笀脳瑙掕壊` 鍚岃鑹叉牳楠?+ 渚嬪浘锛涜緭鍑哄叚椤圭洰瑙嗘牳瀵规竻鍗曚笌 `prefer_artists`/`avoid_artists` 杩唬鍙傛暟锛岃繑鍥炴柊澧?`anchor_scans`銆乣anchor_score`/`pair_score`/`chart_top` 瀛楁锛堝叏绔欏墠 10 鍚嶄綔鍝侀澶?脳1.3锛夛紱`verify.mjs` 澧炲姞 5 椤硅嚜妫€
+- **0.16.1**锛歊EADME 鍦ㄣ€屽畤瀹欏厤璐ｅ０鏄庛€嶄笌銆屽畨瑁呫€嶄箣闂存柊澧炪€屽ぇ鑷翠娇鐢ㄦ暀绋嬶紙鎴浘鐗堬級銆嶄笁寮犵ず渚嬪浘锛堜互鍥炬悳鐢诲笀 / 鎸夊勾浠芥壘鑹插僵鑹充附浣滃搧 / 鐩镐技鐢诲笀+骞翠唤闄愬畾锛夛紝鍥剧墖瀛樹簬 `docs/tutorial/`
+- **0.16.0**锛歚artists_from_image` 鏂板 **鏈嶈璐ㄦ劅** 缁村害 `clothing_tags`锛坧erson 0.10 / style 0.12锛屼笓鍚?`latex`銆乣leather`銆乣shiny_clothes`銆乣see-through_clothes` 绛夋潗璐?tag锛夛紱绾挎潯/鎵嬫硶鏉冮噸寰皟锛坧erson 0.18/0.22銆乻tyle 0.24/0.28锛夛紝鍏朵綑缁村害绛夋瘮涓嬭皟锛屾€诲拰浠嶄负 1
+- **0.15.2**锛氬姞寮虹嚎鏉′笌缁樺埗鎵嬫硶鐨勫弬鑰冩潈閲嶁€斺€擿artists_from_image` person 妯″紡 lineart 0.12鈫?*0.20**銆乼echnique 0.20鈫?*0.24**锛泂tyle 妯″紡 lineart 0.18鈫?*0.26**銆乼echnique 0.26鈫?*0.30**锛堝叾浣欑淮搴︾瓑姣斾笅璋冿紝鎬诲拰浠嶄负 1锛?- **0.15.1**锛氭€ц兘浼樺寲鈥斺€旂櫥褰曞悗鑷姩浣跨敤 0.4 绉掗檺閫熼棿闅旓紙鍖垮悕浠?1.1 绉掞級锛屽璇锋眰宸ュ叿鏁翠綋蹇害 2鈥?.7 鍊嶏紙瀹炴祴 12 璇锋眰鐨?`year_artists` 12.8s 鈫?6.4s锛夛紱鏂板 `minIntervalMsAuthenticated` / `DANBOORU_MIN_INTERVAL_AUTH_MS`锛涘叾浠栬涓恒€佽緭鍑轰笌鎺掑簭涓嶅彉
+- **0.15.0**锛氬€熼壌浠ュ浘鎼滃浘鐨勩€岃繎閲嶅鑱氱被銆嶁€斺€斾互 `parent_id`/`md5` 鎶婂悓涓€寮犵敾鐨勪笉鍚屽彉浣擄紙鏀硅壊銆佽鍒囥€乿ariant 甯栵級褰掍负涓€涓瑙夌皣锛沗artists_from_image` 鎸夌皣鍘婚噸鍚庡啀鑱氬悎璇佹嵁锛屼緥鍥惧彧鍙栦笉鍚岀皣锛沗part_specialists` 涔熸寜绨囨姌鍙犻噸澶嶅浘锛涜緭鍑哄鍔?`dedupe` 涓庢瘡缁?`unique_clusters` / `deduped_posts`
+- **0.14.0**锛氱溂鐫涜壊褰╀粠銆屼汉浣撻檮鍔犲弬鑰冦€嶄腑绉婚櫎锛涙柊澧炪€屾暣浣撹壊璋冨弬鑰冦€峘color_tags` / `color_match` / `color_threshold`锛坄monochrome`銆乣limited_palette`銆乣pastel_colors`銆乣blue_theme`銆乣colorful`銆乣iridescent` 绛夛級锛岃繑鍥?`color.per_tag` 涓?`color.best` 鍙傝€冨浘
+- **0.13.0**锛歚danbooru_year_artists` 鏂板銆屼汉浣撻檮鍔犲弬鑰冦€峘appearance_tags` / `appearance_match` / `appearance_threshold`锛氬湪鍚屼竴鎵规牳楠屼綔鍝佷笂缁熻鑲よ壊銆佺毊鑲よ川鎰?tag锛坄per_tag` 鍛戒腑鏁?+ `ratio` + `appearance.best` 鍙傝€冨浘锛夛紝鍙彧缁熻鎴栨寜姣斾緥鍔犻椄闂?- **0.12.2**锛氭彃浠舵爣棰?浠嬬粛缁熶竴鍔?`DSH-` 鍓嶇紑锛屽苟鏄庣‘鏍囨敞銆孌SH bundle锛屼笉鏄彲鐙珛杩愯鐨勭▼搴忋€?- **0.12.1**锛氫粨搴撹浆涓哄叕寮€锛汻EADME 涓庢彃浠朵粙缁嶆爣娉ㄣ€孉I 鍒朵綔銆嶏紱瀹夎绔犺妭鎷嗗垎涓恒€屼笅杞藉寘 / git clone + link / 婧愮爜 zip銆嶄笁绉嶆柟妗堬紱鏂板銆屽畤瀹欏厤璐ｅ０鏄庛€嶏紙璺戣矾鏉℃锛?- **0.12.0**锛氳繃婊?闄嶆潈 3D 娓叉煋锛坄3d`/`photorealistic`/`faux_3d`锛夛細鐩镐技搴﹂檷鏉?0.05銆佷互鍥炬悳鐢诲笀鎸?`three_d_share` 鎵ｅ垎銆佷緥鍥句笌閮ㄤ綅鍥句紭鍏堟帓闄?3D
+- **0.11.0**锛氫互鍥炬悳鐢诲笀鏂板 `lineart_tags`锛堢嚎鏉★級涓?`lighting_tags`锛堝厜鐓э級缁村害锛屼笖姣忎釜缁村害鏈€澶?4 涓?tag 鍏ㄩ儴鍙備笌妫€绱紙涔嬪墠鍙煡鍓嶄袱涓級锛岀嚎鏉?鑹插僵/鍏夌収姝ｅ紡杩涘叆璇勫垎
+- **0.10.1**锛氫互鍥炬悳鐢诲笀榛樿涓嶉檺骞翠唤锛坄year` 涓嶅～=鍏ㄦ椂闂达級锛屼慨澶嶈緭鍑洪噷鐨勯潪 JSON 鍊煎鑷?`not lossless JSON` 鐨勯棶棰?- **0.10.0**锛氭柊澧?`danbooru_part_specialists`锛堥儴浣嶇壒鍖栵細鎸夐儴浣嶇劍鐐?tag 鐨勯珮鏀惰棌浣滃搧鑱氬悎鐢诲笀鎺掑悕 + 閮ㄤ綅楂樻敹钘忓浘鐗囷級
+- **0.9.1**锛氬叏宸ュ叿鍙繑鍥炲浘鐗囷紙杩囨护 `mp4`/`webm` 绛夎棰戯紱鎼滅储銆佺敾甯堝弬鑰冨浘銆佷緥鍥惧潎璺宠繃瑙嗛锛?- **0.9.0**锛氭柊澧?`danbooru_artists_from_image`锛堜互鍥炬悳鐢诲笀锛屽垎灞備紭鍏堢骇锛氫汉鐗┾啋琛ㄦ儏鈫掔粯鍒舵墜娉曗啋鑹插僵鈫抰ag锛沗mode="style"` 鏃舵墜娉?鑹插僵浼樺厛锛?- **0.8.3**锛氭竻鐞嗚繃鏃舵枃妗ｏ紙閲嶅鐨勫畨瑁呯珷鑺傘€佹棫鐨勮嚜妫€鑰楁椂銆佸伐鍏锋暟閲忥級锛孌SH 鍐呬笌浠撳簱璇存槑鍚屾涓哄綋鍓嶈兘鍔涳紙琛ㄦ儏鐢诲儚/浣欏鸡銆佷緥鍥捐蒋瑙勫垯銆乫urry 闄嶆潈锛?- **0.8.2**锛氫緥鍥炬敼涓鸿蒋瑙勫垯锛堥粯璁や紭鍏堝甫鑴革紝`allow_no_face=true` 鏀捐鏃犺劯鏋勫浘锛夛紱`furry` 绫?tag 鐩镐技搴︽潈閲?脳0.05锛涜繃婊ゆ棤 `sample_url` 鐨勪緥鍥?- **0.8.1**锛氫緥鍥惧己鍒跺尮閰嶉渶姹?tag 骞惰烦杩囬殣钘忚劯鐨勬瀯鍥撅紙宸茬敱 0.8.2 鏀逛负杞鍒欙級
+- **0.8.0**锛氱浉浼肩敾甯堟柊澧炶〃鎯呯敾鍍忋€佽〃鎯?tag 鎵╁睍銆佺█鏈夊害鍔犳潈琛ㄦ儏浣欏鸡涓庨鏍奸噸鍙犳鏌?- **0.7.2**锛氫緥鍥炬寜闇€闄勫甫鏍峰浘 URL锛坄examples`锛?- **0.7.0**锛氭柊澧?`danbooru_similar_artists`锛坱ag 鐢诲儚鐩镐技鐢诲笀锛?

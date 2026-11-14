@@ -104,6 +104,7 @@ const consensus = await call('danbooru_image_artist_consensus', { lists: JSON.st
 check('consensus keeps artists found by at least two schemes', consensus.candidates.map((candidate) => candidate.name).sort().join(',') === 'hews,nyantcha' && consensus.candidates.every((candidate) => candidate.hits >= 2) && consensus.fallback_used === false, JSON.stringify(consensus.candidates.map((candidate) => [candidate.name, candidate.hits])))
 
 const styleMatch = await call('danbooru_style_match', {
+  mode: 'character',
   character: 'firefly_(honkai:_star_rail)',
   style_tags: 'shiny_skin, sweat',
   genre_tags: 'sex',
@@ -118,6 +119,7 @@ check('style match exposes a visual checklist and iteration hint', Array.isArray
 check('style match attaches sample posts', styleMatch.candidates.every((candidate) => Array.isArray(candidate.examples) && candidate.examples.length >= 1 && candidate.examples.every((example) => example.sample_url && example.post_url)), JSON.stringify(styleMatch.candidates.map((candidate) => candidate.examples.length)))
 
 const styleMatchMulti = await call('danbooru_style_match', {
+  mode: 'character',
   character: 'firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)',
   style_tags: 'shiny_skin, sweat',
   genre_tags: 'sex, hetero',
@@ -126,6 +128,37 @@ const styleMatchMulti = await call('danbooru_style_match', {
   examples: 0,
 })
 check('style match aggregates several reference characters', styleMatchMulti.anchor_scans.length === 2 && styleMatchMulti.reference.characters.length === 2 && styleMatchMulti.candidates.every((candidate) => candidate.same_character_breakdown && Object.keys(candidate.same_character_breakdown).length === 2), JSON.stringify(styleMatchMulti.anchor_scans))
+
+const styleMatchLook = await call('danbooru_style_match', {
+  character: 'firefly_(honkai:_star_rail)',
+  style_tags: 'shiny_skin, sweat',
+  subject_tags: 'huge_breasts, dark_nipples',
+  genre_tags: 'sex, hetero',
+  limit: 3,
+  per_query: 30,
+  examples: 0,
+})
+check('style mode ignores identity and ranks by the overall look', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && styleMatchLook.anchor_scans.some((scan) => scan.kind === 'style-top') && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null) && styleMatchLook.queries.some((query) => query.kind === 'style+subject'), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), queries: styleMatchLook.queries.map((query) => query.kind) }))
+
+const styleMatchSmall = await call('danbooru_style_match', {
+  style_tags: 'shiny_skin',
+  limit: 8,
+  examples: 0,
+  verify_same_character: false,
+  discover_small_artists: true,
+  min_artist_posts: 50,
+  small_artist_slots: 2,
+})
+check('style match discovers small artists through style-tag co-occurrence', styleMatchSmall.small_artist_discovery?.enabled === true && styleMatchSmall.small_artist_discovery.discovered > 0 && styleMatchSmall.candidates.some((candidate) => candidate.discovered_via_style_cooccurrence) && styleMatchSmall.candidates.every((candidate) => candidate.artist_posts == null || candidate.artist_posts >= 50), JSON.stringify(styleMatchSmall.small_artist_discovery))
+
+const styleMatchSeed = await call('danbooru_style_match', {
+  style_tags: 'shiny_skin, sweat',
+  seed_artists: 'eigaka',
+  limit: 6,
+  examples: 0,
+  verify_same_character: false,
+})
+check('style match forces explicit seed artists into the result', styleMatchSeed.candidates.some((candidate) => candidate.name === 'eigaka' && candidate.seed_artist === true && typeof candidate.artist_posts === 'number' && candidate.artist_posts >= 50), JSON.stringify(styleMatchSeed.seed_artists))
 
 const posts = await call('danbooru_search_posts', { tags: 'hatsune_miku solo', limit: 3 })
 check('search_posts returns posts', posts.count > 0, JSON.stringify(posts).slice(0, 300))
