@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.16.1'
+const VERSION = '0.18.1'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -126,6 +126,41 @@ const FACE_HIDDEN_TAGS = new Set(['ass_focus', 'from_behind', 'head_out_of_frame
 const THREE_D_TAGS = new Set(['3d', 'photorealistic', 'faux_3d'])
 const isThreeDPost = (post) => Boolean(post) && splitTags(post.tag_string_general).some((tag) => THREE_D_TAGS.has(tag))
 
+/** Character-identity / decorative-feature tags: hair and eye colour, horns, halo, ears, tail,
+ * wings, ornaments, jewellery and garment nouns. They describe WHO is in the picture (or the
+ * prompt's decorative dressing), not how the artist draws — so the image-to-artist search drops
+ * them before scoring. Material tags (latex, leather, lace, shiny_clothes, see-through_clothes)
+ * stay: they are rendering cues, not character identity. */
+const IDENTITY_TAGS = new Set([
+  // hair colour
+  'pink_hair', 'red_hair', 'blue_hair', 'blonde_hair', 'brown_hair', 'black_hair', 'white_hair',
+  'grey_hair', 'gray_hair', 'silver_hair', 'purple_hair', 'green_hair', 'orange_hair', 'aqua_hair',
+  'multicolored_hair', 'two-tone_hair', 'streaked_hair', 'colored_inner_hair', 'gradient_hair',
+  'rainbow_hair', 'split-color_hair', 'partially_colored_hair',
+  // eye colour / heterochromia
+  'red_eyes', 'blue_eyes', 'green_eyes', 'yellow_eyes', 'purple_eyes', 'brown_eyes', 'grey_eyes',
+  'gray_eyes', 'pink_eyes', 'orange_eyes', 'aqua_eyes', 'multicolored_eyes', 'colored_eyes', 'heterochromia',
+  // creature / character features
+  'horns', 'halo', 'tail', 'wings', 'animal_ears', 'pointy_ears', 'pointed_ears', 'elf', 'fangs',
+  'demon_horns', 'fake_horns', 'cow_horns', 'dragon_horns', 'large_horns', 'small_horns', 'multiple_horns',
+  'asymmetrical_horns', 'uneven_horns', 'black_horns', 'brown_horns', 'red_horns', 'white_horns',
+  'gold_horns', 'glowing_horns', 'black_halo', 'white_halo', 'pink_halo', 'purple_halo', 'golden_halo',
+  'glowing_halo', 'animal_ear_fluff', 'fox_ears', 'cat_ears', 'rabbit_ears', 'wolf_ears',
+  // ornaments, jewellery, accessories
+  'hair_ornament', 'hairband', 'hairclip', 'hair_ribbon', 'hair_bow', 'hair_flower', 'ribbon', 'bow',
+  'bowtie', 'earrings', 'earring', 'jewelry', 'necklace', 'choker', 'pendant', 'gemstone', 'gem',
+  'crown', 'tiara', 'veil', 'mask', 'sunglasses', 'glasses', 'eyepatch', 'scrunchie', 'hair_flower',
+  // garment nouns (material tags stay in style tags)
+  'lingerie', 'bra', 'panties', 'underwear', 'pantyhose', 'thighhighs', 'socks', 'skirt', 'shirt',
+  'dress', 'blouse', 'sweater', 'jacket', 'coat', 'swimsuit', 'bikini', 'leotard', 'bodysuit', 'apron',
+  'uniform', 'kimono', 'yukata', 'corset', 'stockings', 'gloves', 'elbow_gloves', 'boots', 'shoes',
+  'sandals', 'white_lingerie',
+])
+/** Expression tags that end in `_eyes` but describe the face, not iris colour. */
+const EYE_EXPRESSION_TAGS = new Set(['closed_eyes', 'half-closed_eyes', 'open_eyes', 'empty_eyes', 'rolling_eyes'])
+const IDENTITY_TAG_PATTERN = /^(?:[a-z-]+_(?:hair|horns?|halo|eyes|tail|wings))$/
+const isIdentityTag = (tag) => IDENTITY_TAGS.has(tag) || (IDENTITY_TAG_PATTERN.test(tag) && !EYE_EXPRESSION_TAGS.has(tag))
+
 /** Near-duplicate cluster key, borrowed from reverse-image-search practise: edits and variants
  * of one drawing share a base post via `parent_id`, identical uploads share `md5`, and anything
  * else is its own cluster. Deduping by cluster keeps a variant set (crops, colour edits, variant
@@ -175,6 +210,33 @@ const IMAGE_SEARCH_WEIGHTS = {
   person: { person: 0.4, expression: 0.25, technique: 0.2, color: 0.1, tag: 0.05 },
   style: { technique: 0.4, color: 0.25, person: 0.2, expression: 0.1, tag: 0.05 },
 }
+
+/**
+ * Whole-look artist matching. Pair queries are cheap (two tags fit the anonymous budget) and a
+ * character pair is worth the most: an artist who already drew the same character in the same
+ * kind of scene is the strongest tag-side style evidence. Style/style and style/genre pairs only
+ * fill in candidates when the character anchor is weak or absent.
+ */
+const STYLE_MATCH_KIND_WEIGHTS = {
+  'character+genre': 1,
+  'character+style': 0.9,
+  'style+genre': 0.6,
+  'style+style': 0.7,
+  style: 0.5,
+  genre: 0.4,
+}
+const STYLE_MATCH_MAX_PAIRS = 6
+/** Same-character post count at which the character evidence saturates (log scale). */
+const STYLE_MATCH_CHARACTER_SATURATION = 40
+/** The visual comparison the caller must run on the returned samples before trusting a candidate. */
+const STYLE_MATCH_CHECKLIST = [
+  'Line work: thickness, colour, taper, sketchiness, how outlines meet fills.',
+  'Shading: cel vs airbrush, shadow softness, highlight shape and gloss.',
+  'Palette: skin warmth, shadow tint, background value, overall contrast.',
+  'Body: proportions, build, bust/hip/leg shape, hands and feet.',
+  'Faces: face shape, eye construction, nose, mouth, brow.',
+  'Composition: framing, crops, camera height, pose choice, decorations.',
+]
 
 /** Body-part focus presets: the first tag is the part-specific focus tag, the rest are broader fallbacks. */
 const PART_PRESETS = {
@@ -1387,7 +1449,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing texture 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing texture 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. Lineart and technique are weighted above the older defaults because they carry the "same drawing hand" signal, and clothing_tags adds a separate material cue (latex, leather, shiny_clothes, see-through_clothes). It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing texture 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing texture 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns such as lingerie/bra/shirt) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags (technique_tags, lineart_tags, clothing material tags, color_tags, lighting_tags) and body-build tags instead. Lineart and technique are weighted above the older defaults because they carry the "same drawing hand" signal, and clothing_tags adds a separate material cue (latex, leather, shiny_clothes, see-through_clothes). It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
@@ -1419,7 +1481,7 @@ export function apply(ctx, rawConfig = {}) {
         const limit = clamp(args?.limit, 1, 25, 10)
         const exampleCount = clamp(args?.examples, 0, 3, 0)
 
-        const groups = [
+        const rawGroups = [
           { key: 'person', tags: parseTagList(args?.person_tags) },
           { key: 'expression', tags: parseTagList(args?.expression_tags) },
           { key: 'technique', tags: parseTagList(args?.technique_tags) },
@@ -1428,7 +1490,23 @@ export function apply(ctx, rawConfig = {}) {
           { key: 'color', tags: parseTagList(args?.color_tags) },
           { key: 'lighting', tags: parseTagList(args?.lighting_tags) },
           { key: 'tag', tags: imageTags },
-        ].filter((group) => group.tags.length > 0)
+        ]
+        // Identity/decorative features describe who is in the picture, not the drawing hand:
+        // drop them before scoring and report them so the caller can learn to omit them.
+        const excludedIdentityTags = []
+        const groups = rawGroups
+          .map((group) => ({
+            key: group.key,
+            tags: group.tags.filter((tag) => {
+              if (!isIdentityTag(tag)) return true
+              if (!excludedIdentityTags.includes(tag)) excludedIdentityTags.push(tag)
+              return false
+            }),
+          }))
+          .filter((group) => group.tags.length > 0)
+        if (groups.length === 0) {
+          throw new Error('All provided tags are character-identity features (hair/eye colour, horns, halo, ornaments, garment nouns). This tool scores the drawing technique instead: pass rendering tags such as technique_tags="shiny_skin, sweat", lineart_tags="lineart, colored_lineart", clothing_tags="latex, lace, see-through_clothes", color_tags="colorful", lighting_tags="backlighting", person_tags="huge_breasts, thick_thighs".')
+        }
         const totalWeight = groups.reduce((sum, group) => sum + (weights[group.key] ?? 0), 0) || 1
 
         const standing = new Map()
@@ -1488,7 +1566,7 @@ export function apply(ctx, rawConfig = {}) {
 
         if (exampleCount > 0) {
           const requested = parseTagList(args?.example_tags)
-          const requiredTags = requested.length > 0 ? requested : (groups.find((group) => group.key === 'expression')?.tags ?? imageTags)
+          const requiredTags = requested.length > 0 ? requested : (groups.find((group) => group.key === 'expression')?.tags ?? groups.find((group) => group.key === 'tag')?.tags ?? [])
           const allowNoFace = args?.allow_no_face === true
           for (const candidate of candidates) {
             try {
@@ -1524,8 +1602,9 @@ export function apply(ctx, rawConfig = {}) {
           weights,
           groups: groupStats,
           candidates,
+          excluded_identity_tags: excludedIdentityTags,
           dedupe: { method: 'near-duplicate cluster (parent_id / md5)', groups: groupStats.map((group) => ({ key: group.key, unique_clusters: group.unique_clusters, deduped_posts: group.deduped_posts })) },
-          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). Near-duplicate variants (same parent post or md5) are collapsed into one visual cluster so a variant set does not stack evidence, and examples are drawn from distinct clusters. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
+          note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). Character-identity features (hair/eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are dropped and reported in excluded_identity_tags — they describe who is in the picture, not the drawing hand; pass rendering tags (technique/lineart/clothing material/color/lighting) and body-build tags instead. Near-duplicate variants (same parent post or md5) are collapsed into one visual cluster so a variant set does not stack evidence, and examples are drawn from distinct clusters. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
         })
       },
     },
@@ -1649,6 +1728,257 @@ export function apply(ctx, rawConfig = {}) {
           posts,
           note: 'Artists are ranked by favorites of posts carrying the part-focus tag(s); parts are tagged, so a good part drawing without the focus tag is missed. Near-duplicate variants (same parent/md5) are collapsed into one visual cluster before counting. Confirm the part rendering visually before deciding.',
         }
+      },
+    },
+    {
+      name: 'danbooru_style_match',
+      description: 'Find the artists behind an overall look rather than one visible feature. Pass one character tag or a comma-separated list of every character in a multi-image reference set; it scans each character\'s all-time top-scored works (rank-weighted, so appearing near the top of the chart counts most; this reaches older high-score works that a newest-first search misses), then adds newest-page pair queries for character x genre, character x style and style x genre, verifies the shortlist by counting each artist\'s own posts with those characters (per-character breakdown included), and attaches sample posts. Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate.',
+      parameters: parameters({
+        character: { type: 'string', description: 'One Danbooru character tag or a comma-separated list (up to 3, e.g. "firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)"). Strongly recommended: pair queries with it surface artists who already drew these characters in this kind of scene. The first two characters get an all-time anchor scan and same-character verification, so passing every character that appears in a multi-image reference set is better than picking one.' },
+        style_tags: { type: 'string', description: 'Comma-separated rendering tags describing the look: line, shading, palette, texture, e.g. "colored_lineart, soft_shading, shiny_skin".' },
+        genre_tags: { type: 'string', description: 'Comma-separated scene/act tags, e.g. "sex, hetero, cum, bed".' },
+        year: { type: 'integer', minimum: 2005, description: 'Only sample posts published in this calendar year. Without credentials the date tag may not fit the anonymous tag budget, so the filter can fall back to client-side filtering (reported in the result).' },
+        rating: { type: 'string', enum: ['g', 's', 'q', 'e', 'all'], description: 'Rating filter; all (default) applies no filter. Filtering happens client-side because of the anonymous two-tag budget, so a narrow rating can return fewer samples.' },
+        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
+        per_query: { type: 'integer', minimum: 20, maximum: 200, description: 'Posts sampled per pair query (default 100). At most six pair queries run.' },
+        examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts attached per candidate (default 2; occasionally costs one extra request). Same-character works are preferred.' },
+        prefer_artists: { type: 'string', description: 'Comma-separated artist tags to boost, for carrying a shortlist from the previous call into the next iteration.' },
+        avoid_artists: { type: 'string', description: 'Comma-separated artist tags to remove entirely, for pruning candidates that looked wrong.' },
+        verify_same_character: { type: 'boolean', description: 'Count each shortlisted artist\'s own posts with the character (default true). Set false to skip roughly half the requests when no character is given.' },
+      }),
+      output,
+      async execute(args, exec) {
+        const artistKey = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_')
+        // character accepts a comma-separated list: a reference set often spans several characters,
+        // and evidence collected from every character is stronger than from a single one.
+        const characters = [...new Set(parseTagList(args?.character).map((tag) => artistKey(String(tag).replace(/^character:/i, ''))))].filter(Boolean).slice(0, 3)
+        const character = characters[0] ?? ''
+        const styleTags = [...new Set(parseTagList(args?.style_tags).map(artistKey))].filter((tag) => tag && !tag.includes(':')).slice(0, 5)
+        const genreTags = [...new Set(parseTagList(args?.genre_tags).map(artistKey))].filter((tag) => tag && !tag.includes(':')).slice(0, 5)
+        if (characters.length === 0 && styleTags.length === 0 && genreTags.length === 0) {
+          throw new Error('Provide at least one of character, style_tags or genre_tags')
+        }
+        const year = parseYear(args?.year)
+        const rating = ['g', 's', 'q', 'e', 'all'].includes(args?.rating) ? args.rating : config.defaultRating
+        const limit = clamp(args?.limit, 1, 25, 10)
+        const perQuery = clamp(args?.per_query, 20, 200, 100)
+        const exampleCount = clamp(args?.examples, 0, 3, 2)
+        const prefer = new Set(parseTagList(args?.prefer_artists).map(artistKey))
+        const avoid = new Set(parseTagList(args?.avoid_artists).map(artistKey))
+        const verifyCharacter = characters.length > 0 && args?.verify_same_character !== false
+        const auth = await authStatus()
+
+        // Pair queries: two real tags fit the anonymous budget. order:score is appended only for
+        // authenticated clients; anonymous clients fetch the newest page and rank it client-side.
+        const pairs = []
+        const addPair = (tokens, kind) => {
+          const key = tokens.join(' ')
+          if (pairs.length >= STYLE_MATCH_MAX_PAIRS || pairs.some((pair) => pair.key === key)) return
+          pairs.push({ key, tokens, kind, weight: STYLE_MATCH_KIND_WEIGHTS[kind] ?? 0.5 })
+        }
+        if (characters.length > 0) {
+          const primary = characters[0]
+          for (const tag of genreTags.slice(0, 2)) addPair([primary, tag], 'character+genre')
+          for (const tag of styleTags.slice(0, 2)) addPair([primary, tag], 'character+style')
+          // A second character from the same reference set gets one pair of each kind.
+          if (characters[1]) {
+            if (genreTags[0]) addPair([characters[1], genreTags[0]], 'character+genre')
+            if (styleTags[0]) addPair([characters[1], styleTags[0]], 'character+style')
+          }
+        }
+        if (styleTags.length > 0 && genreTags.length > 0) {
+          addPair([styleTags[0], genreTags[0]], 'style+genre')
+          const secondStyle = styleTags[1] ?? styleTags[0]
+          const secondGenre = genreTags[1] ?? genreTags[0]
+          if (secondStyle !== styleTags[0] || secondGenre !== genreTags[0]) addPair([secondStyle, secondGenre], 'style+genre')
+        }
+        if (characters.length === 0 && styleTags.length >= 2) {
+          for (let index = 0; index + 1 < styleTags.length; index += 2) addPair([styleTags[index], styleTags[index + 1]], 'style+style')
+        }
+        if (pairs.length === 0) addPair([character || styleTags[0] || genreTags[0]], character ? 'character' : styleTags.length > 0 ? 'style' : 'genre')
+
+        const fetchRows = async (tokens, sampleLimit, options = {}) => {
+          const queryTokens = [...tokens]
+          let usedServerDate = false
+          if (year && queryTokens.length < 2) {
+            queryTokens.push(yearTag(year))
+            usedServerDate = true
+          }
+          const baseTags = queryTokens.join(' ')
+          // One real tag plus order:score still fits the anonymous two-tag budget; a pair plus the
+          // order metatag does not, so pair queries stay newest-first and are ranked client-side.
+          const canOrderServerSide = !usedServerDate && (options.orderScore === true || auth.configured)
+          let data
+          let serverOrdered = false
+          if (canOrderServerSide) {
+            try {
+              data = await request('/posts.json', { tags: `${baseTags} order:score`, limit: sampleLimit }, { signal: exec?.signal, ttlMs: TTL.posts })
+              serverOrdered = true
+            } catch (error) {
+              data = await request('/posts.json', { tags: baseTags, limit: sampleLimit }, { signal: exec?.signal, ttlMs: TTL.posts })
+            }
+          } else {
+            data = await request('/posts.json', { tags: baseTags, limit: sampleLimit }, { signal: exec?.signal, ttlMs: TTL.posts })
+          }
+          let rows = onlyImages(Array.isArray(data) ? data : [])
+          if (!serverOrdered) rows.sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+          if (rating !== 'all') rows = rows.filter((post) => post.rating === rating)
+          if (year && !usedServerDate) rows = rows.filter((post) => String(post.created_at ?? '').startsWith(String(year)))
+          return rows
+        }
+
+        const standing = new Map()
+        const recordArtists = (post, weight, kind, source) => {
+          for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
+            if (avoid.has(artistKey(name))) continue
+            const entry = standing.get(name) ?? { name, anchorScore: 0, pairScore: 0, hits: 0, kinds: [], samples: [] }
+            if (source === 'anchor') entry.anchorScore += weight
+            else entry.pairScore += weight
+            entry.hits += 1
+            if (!entry.kinds.includes(kind)) entry.kinds.push(kind)
+            if (entry.samples.length < exampleCount + 1) entry.samples.push(post)
+            standing.set(name, entry)
+          }
+        }
+
+        // All-time anchor scan: a single tag plus order:score fits the anonymous budget and reaches
+        // older high-score works that a newest-first pair query misses. Rows are rank-weighted, so
+        // appearing at the top of the character's all-time chart counts much more than appearing far
+        // down; rows that also carry the style/genre tags count extra. This is what surfaces a
+        // well-known artist whose few works of this character score highest.
+        const anchorScans = []
+        const chartTop = new Set()
+        // One anchor per character (a reference set can span several characters); without any
+        // character, the first style/genre tag becomes the anchor.
+        const anchorTags = characters.length > 0 ? characters.slice(0, 2) : [styleTags[0] || genreTags[0]].filter(Boolean)
+        for (const anchorTag of anchorTags) {
+          const anchorKind = characters.length > 0 ? 'character-top' : 'style-top'
+          const rows = dedupeByCluster((await fetchRows([anchorTag], 200, { orderScore: true })).map((post) => ({ post })))
+          const tagPool = [...styleTags, ...genreTags].filter((tag) => tag !== anchorTag)
+          let matchedRows = 0
+          for (let index = 0; index < rows.length; index += 1) {
+            const row = rows[index]
+            const pool = new Set([...splitTags(row.post.tag_string_general), ...splitTags(row.post.tag_string_character)])
+            const matches = tagPool.filter((tag) => pool.has(tag)).length
+            if (matches > 0) matchedRows += 1
+            if (index < 10) {
+              // A work near the top of the character's all-time chart is unusually strong evidence.
+              for (const name of splitTags(row.post.tag_string_artist).filter(isIllustratorTag)) chartTop.add(name)
+            }
+            const rankWeight = 1 / (1 + 0.02 * index)
+            recordArtists(row.post, rankWeight * (matches > 0 ? 1.4 : 0.5), anchorKind, 'anchor')
+          }
+          anchorScans.push({ tags: anchorTag, kind: anchorKind, sampled: rows.length, style_matched: matchedRows })
+        }
+
+        const queries = []
+        for (const pair of pairs) {
+          const rows = dedupeByCluster((await fetchRows(pair.tokens, perQuery)).map((post) => ({ post })))
+          queries.push({ tags: pair.tokens.join(' '), kind: pair.kind, sampled: rows.length })
+          for (const row of rows) recordArtists(row.post, pair.weight / Math.max(1, rows.length), pair.kind, 'pair')
+        }
+
+        const ranked = [...standing.values()]
+        const maxAnchor = ranked.reduce((max, entry) => Math.max(max, entry.anchorScore), 0) || 1
+        const maxPair = ranked.reduce((max, entry) => Math.max(max, entry.pairScore), 0) || 1
+        const preScore = (entry) => 0.7 * (entry.anchorScore / maxAnchor) + 0.3 * (entry.pairScore / maxPair)
+        const ordered = ranked.sort((left, right) => preScore(right) - preScore(left) || right.hits - left.hits || left.name.localeCompare(right.name))
+
+        // Same-character verification: how many posts does this artist actually have with the
+        // character? An artist who already draws the character is strong style evidence; the
+        // sample posts from this query are also the best examples to look at.
+        const characterEvidence = new Map()
+        const shortlist = ranked.slice(0, Math.min(ranked.length, limit * 2))
+        const verifyCharacters = verifyCharacter ? characters.slice(0, 2) : []
+        if (verifyCharacters.length > 0) {
+          for (const entry of shortlist) {
+            let posts = 0
+            const breakdown = {}
+            const samples = []
+            for (const verifyTag of verifyCharacters) {
+              const rows = dedupeByCluster((await fetchRows([entry.name, verifyTag], 100)).map((post) => ({ post })))
+              breakdown[verifyTag] = rows.length
+              posts += rows.length
+              for (const row of rows) {
+                if (samples.length < 3) samples.push(row.post)
+              }
+            }
+            characterEvidence.set(entry.name, { posts, breakdown, samples })
+          }
+        }
+
+        const scored = shortlist.map((entry) => {
+          const anchor = entry.anchorScore / maxAnchor
+          const pair = entry.pairScore / maxPair
+          const sameCharacter = verifyCharacter ? (characterEvidence.get(entry.name)?.posts ?? 0) : null
+          const characterScore = verifyCharacter ? Math.min(1, Math.log10(1 + sameCharacter) / Math.log10(1 + STYLE_MATCH_CHARACTER_SATURATION)) : 0
+          let score = verifyCharacter ? 0.55 * anchor + 0.25 * pair + 0.2 * characterScore : 0.7 * anchor + 0.3 * pair
+          if (chartTop.has(entry.name)) score = Math.min(1, score * 1.3)
+          if (prefer.has(artistKey(entry.name))) score = Math.min(1, score * 1.25 + 0.05)
+          return { entry, anchor, pair, sameCharacter, score }
+        })
+        scored.sort((left, right) => right.score - left.score || right.entry.hits - left.entry.hits || left.entry.name.localeCompare(right.entry.name))
+        const finalists = scored.slice(0, limit)
+
+        // Samples: same-character works first (strongest evidence), then posts collected by the
+        // scan, then the artist's own top posts when still short.
+        const examples = new Map()
+        for (const finalist of finalists) {
+          const picked = []
+          const seen = new Set()
+          const add = (post) => {
+            if (!post || picked.length >= exampleCount) return
+            const key = visualClusterKey(post)
+            if (seen.has(key)) return
+            seen.add(key)
+            picked.push(post)
+          }
+          for (const post of characterEvidence.get(finalist.entry.name)?.samples ?? []) add(post)
+          for (const post of finalist.entry.samples) add(post)
+          if (exampleCount > 0 && picked.length < exampleCount) {
+            const rows = await fetchRows([finalist.entry.name], Math.max(60, exampleCount * 20))
+            for (const post of rows) add(post)
+          }
+          examples.set(finalist.entry.name, picked.slice(0, exampleCount).map((post) => ({
+            post_id: post.id,
+            post_url: `${ORIGIN}/posts/${post.id}`,
+            sample_url: post.large_file_url ?? post.file_url ?? null,
+            preview_url: post.preview_file_url ?? null,
+            rating: post.rating ?? null,
+          })))
+        }
+
+        return toLossless({
+          reference: { characters, character: character || null, style_tags: styleTags, genre_tags: genreTags, year: year ?? null, rating },
+          method: 'all-time anchor scan + character-anchored pair scan + same-character verification',
+          anchor_scans: anchorScans,
+          queries,
+          candidates: finalists.map((finalist) => ({
+            name: finalist.entry.name,
+            artist_url: artistPostsUrl(finalist.entry.name),
+            score: round(finalist.score * 100, 1),
+            anchor_score: round(finalist.anchor * 100, 1),
+            pair_score: round(finalist.pair * 100, 1),
+            same_character_posts: finalist.sameCharacter,
+            same_character_breakdown: verifyCharacter ? (characterEvidence.get(finalist.entry.name)?.breakdown ?? null) : null,
+            chart_top: chartTop.has(finalist.entry.name),
+            sampled_posts: finalist.entry.hits,
+            matched: finalist.entry.kinds,
+            examples: examples.get(finalist.entry.name) ?? [],
+          })),
+          verify: {
+            checklist: STYLE_MATCH_CHECKLIST,
+            note: 'Judge the whole rendering, not one feature. Feature tags (half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin, sparkle, ...) are usually prompt effects in AI output; the artist string mainly drives line quality, shading, palette, body build and composition. Compare candidates on those five axes, then blend 2-3 artists and tune weights.',
+            character_evidence: verifyCharacter
+              ? `same_character_posts sums that artist's own posts carrying any of the reference characters (${characters.slice(0, 2).join(', ')}); same_character_breakdown shows the per-character counts. Drawing several characters from the same reference set is the strongest tag-side evidence that a candidate already draws the look you want.`
+              : 'Not run (verify_same_character=false).',
+          },
+          iterate: {
+            prefer_artists: [...prefer],
+            avoid_artists: [...avoid],
+            hint: 'Pass the shortlist you liked back as prefer_artists and the wrong ones as avoid_artists for the next call; refine style_tags/genre_tags from what the samples actually show instead of adding feature tags.',
+          },
+        })
       },
     },
     {

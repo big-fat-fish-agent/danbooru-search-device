@@ -40,7 +40,7 @@ function check(label, condition, detail) {
   }
 }
 
-check('registers twelve tools', registered.size === 12, `registered=${[...registered.keys()].join(', ')}`)
+check('registers thirteen tools', registered.size === 13, `registered=${[...registered.keys()].join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false
@@ -92,6 +92,33 @@ check('image artist search ranks by weighted dimensions', imageArtists.candidate
 check('image search collapses near-duplicate clusters', imageArtists.dedupe?.method?.includes('parent_id') && imageArtists.groups.every((group) => typeof group.unique_clusters === 'number' && typeof group.deduped_posts === 'number' && group.unique_clusters <= 400), JSON.stringify(imageArtists.dedupe).slice(0, 300))
 const imageWeightSum = Object.values(imageArtists.weights).reduce((sum, value) => sum + value, 0)
 check('image search weights lineart, technique and clothing', imageArtists.weights.lineart >= 0.18 && imageArtists.weights.technique >= 0.22 && imageArtists.weights.clothing >= 0.1 && imageArtists.groups.some((group) => group.key === 'clothing') && Math.abs(imageWeightSum - 1) < 1e-9, JSON.stringify(imageArtists.weights))
+
+const identityArtists = await call('danbooru_artists_from_image', { image_tags: 'pink_hair, horns, white_lingerie', technique_tags: 'shiny_skin', limit: 3 })
+check('image search drops character identity features', Array.isArray(identityArtists.excluded_identity_tags) && identityArtists.excluded_identity_tags.includes('pink_hair') && identityArtists.excluded_identity_tags.includes('horns') && identityArtists.excluded_identity_tags.includes('white_lingerie') && identityArtists.groups.every((group) => group.key !== 'tag') && identityArtists.candidates.length > 0, JSON.stringify(identityArtists.excluded_identity_tags))
+
+const styleMatch = await call('danbooru_style_match', {
+  character: 'firefly_(honkai:_star_rail)',
+  style_tags: 'shiny_skin, sweat',
+  genre_tags: 'sex',
+  limit: 4,
+  per_query: 40,
+  examples: 1,
+})
+check('style match scans the character all-time top works', styleMatch.anchor_scans.length === 1 && styleMatch.anchor_scans[0].kind === 'character-top' && styleMatch.anchor_scans[0].sampled > 0, JSON.stringify(styleMatch.anchor_scans))
+check('style match ranks candidates with same-character evidence', styleMatch.candidates.length > 0 && styleMatch.candidates.every((candidate) => candidate.name && typeof candidate.score === 'number' && String(candidate.artist_url).includes('/posts?tags=')) && styleMatch.candidates.every((candidate) => typeof candidate.same_character_posts === 'number'), JSON.stringify(styleMatch.candidates.map((candidate) => [candidate.name, candidate.score])).slice(0, 300))
+check('style match reports anchor and pair evidence', styleMatch.candidates.every((candidate) => typeof candidate.anchor_score === 'number' && typeof candidate.pair_score === 'number' && typeof candidate.chart_top === 'boolean') && styleMatch.queries.some((query) => query.kind.startsWith('character+')), JSON.stringify(styleMatch.queries).slice(0, 300))
+check('style match exposes a visual checklist and iteration hint', Array.isArray(styleMatch.verify?.checklist) && styleMatch.verify.checklist.length >= 5 && typeof styleMatch.iterate?.hint === 'string' && Array.isArray(styleMatch.iterate.prefer_artists), JSON.stringify(styleMatch.iterate).slice(0, 200))
+check('style match attaches sample posts', styleMatch.candidates.every((candidate) => Array.isArray(candidate.examples) && candidate.examples.length >= 1 && candidate.examples.every((example) => example.sample_url && example.post_url)), JSON.stringify(styleMatch.candidates.map((candidate) => candidate.examples.length)))
+
+const styleMatchMulti = await call('danbooru_style_match', {
+  character: 'firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)',
+  style_tags: 'shiny_skin, sweat',
+  genre_tags: 'sex, hetero',
+  limit: 2,
+  per_query: 30,
+  examples: 0,
+})
+check('style match aggregates several reference characters', styleMatchMulti.anchor_scans.length === 2 && styleMatchMulti.reference.characters.length === 2 && styleMatchMulti.candidates.every((candidate) => candidate.same_character_breakdown && Object.keys(candidate.same_character_breakdown).length === 2), JSON.stringify(styleMatchMulti.anchor_scans))
 
 const posts = await call('danbooru_search_posts', { tags: 'hatsune_miku solo', limit: 3 })
 check('search_posts returns posts', posts.count > 0, JSON.stringify(posts).slice(0, 300))

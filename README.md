@@ -69,7 +69,7 @@
 
 `plugin_manager` 的 `remove_bundle`；或删除 profile `package.json` 里的依赖与 `dsh.bundles` 条目后重启 DSH。
 
-装好后可选自检：`node verify.mjs`（约 5 分钟，真实请求，不写文件）。
+装好后可选自检：`node verify.mjs`（约 3–5 分钟，真实请求，不写文件）。
 
 ## 工具
 
@@ -83,6 +83,7 @@
 | `danbooru_related_tags` | 共现相关 tag（含作品数、共现频率、余弦相似度） | `query`、`category`、`limit` |
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
+| `danbooru_style_match` | **整体画风匹配（角色锚定 → 同角色核验）**：先扫角色「全站最高分」作品（名次加权），再跑「角色×题材/画风」「画风×题材」pair 兜底，最后按「该画师同角色作品数」核验并附例图；输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。`character` 支持逗号分隔多个角色（多张参考图场景） | `character`、`style_tags`、`genre_tags`、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
@@ -216,6 +217,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 > 线条/绘制手法权重高于旧默认（person 模式 lineart 0.18、technique 0.22；style 模式 0.24 / 0.28），并新增 `clothing` **服装质感** 维度（0.10 / 0.12），专门吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 这类服装材质 tag——和 `technique`（皮肤/整体上色材质）分开计分。
 
+- **角色身份/装饰特征不计分**：发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）会在评分前被剔除，并在返回的 `excluded_identity_tags` 里列出；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。以图搜画师只该描述「怎么画的」，而不是「画的是谁」。
 - **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 服装质感 ≈ 色彩 → 光照 → 人物 → 表情 → tag
 - **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 ≈ 绘制手法 → 线条 → 表情 → 服装质感 → 色彩 → 光照 → tag
 - 每个维度**最多取 4 个 tag，逐个 tag 单独检索**（各 100 条，`order:score`）；同一维度内按帖子去重，再按画师出现频率加权累加
@@ -232,6 +234,44 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - **放弃：视觉 embedding 检索**——需要本地 CLIP/BLIP 级模型（几 GB 依赖），和「零运行时依赖、轻量、只读 API」的定位冲突；Danbooru 也没有公开的相似图/向量检索 API
 - **放弃：OCR 识别签名/水印**——需要 OCR 依赖；而会话里 Agent 本身就能看图上的文字，没必要塞进插件
 - 若以后真要做视觉向量检索，应**单开一个子插件**（本地视觉服务负责图 → embedding，再向本插件提供候选），而不是把重依赖塞进这个插件
+
+## 整体画风匹配（角色锚定 → 同角色核验）
+
+`danbooru_style_match` 是「同一作者/同一套图反推画师串」这类任务沉淀下来的检索方案：**不问「谁画了这些特征」，而问「谁画过同一个角色、同一类场景、并且整体画法一致」**。
+
+**为什么不能按特征 tag 找**：`half-closed_eyes`、`eyeshadow`、`dark-skinned_male`、`sparkle`、`shiny_skin` 这类 tag 在 AI 图里多半是 prompt 效果，同题材画师几乎人人都有；按它们聚合只会得到「同题材画师榜」，而不是「同画风画师榜」。画师真正决定的是：**线稿、上色、色调、人体比例、脸部构造、构图**。
+
+**工具内部的检索顺序**：
+
+1. **全站高分锚点（核心）**：用 `character`（无角色时用第一个 `style_tag`）单独查 `order:score` 的前 200 张，按名次衰减加权——名次越靠前权重越高。单 tag + `order:score` 只占两个 tag 额度，**匿名也能用**，且能覆盖几年前的高分老图。
+2. **pair 查询兜底**：`角色×题材`、`角色×画风`、`画风×题材` 各最多 2 组（每组正好两个真实 tag，适配匿名 2-tag 限制）；pair 只能取最新页，客户端再按分数排序，用来补近期/新画师。
+3. **同角色核验**：对候选逐个查 `画师×角色`，统计该画师自己的同角色作品数——「已经画过这个角色」是最强的 tag 侧证据；这段查询返回的作品同时就是最好的例图。
+4. **加权排序**：`0.55×锚点分 + 0.25×pair 分 + 0.2×同角色分`（无角色时只按锚点/pair）；若候选在「全站前 10 名」里出现过，再 ×1.3（`chart_top=true`），因为作品能排到该角色收藏榜最前本身就是强证据。`prefer_artists` 会额外加分，`avoid_artists` 直接剔除。
+5. 返回 `verify.checklist`（线稿 / 上色 / 色调 / 人体 / 脸 / 构图 六项目视核对清单）与 `iterate.hint`，方便下一轮接着迭代。
+
+**三条关键经验（已写进实现）**：
+
+- 同角色作品「多」≠ 画风像，但「有」是必要条件；所以同角色只做证据加分，主排序仍是「全站高分作品里的出现」。
+- 只按最新页搜 `角色×题材` 会漏掉几年前的高分老图（例：某画师的同角色作品在收藏前列，但发布于两年前）——所以必须有 `order:score` 锚点扫描。
+- 例图必须**整体**比对：线稿→上色→色调→人体→脸→构图逐项过，不能因为「半闭眼/红眼影」对上了就定案。
+
+用法：
+
+- 带角色：`danbooru_style_match(character="firefly_(honkai:_star_rail)", style_tags="shiny_skin, colored_lineart", genre_tags="sex, sweat", limit=10, examples=2)`
+- 无角色：`danbooru_style_match(style_tags="shiny_skin, sweat, colored_lineart", genre_tags="sex", limit=12, examples=2)`
+- 迭代：上一轮看中的画师放进 `prefer_artists`、看错的放进 `avoid_artists`，再跑一次即可收敛
+- 成本：约 `1 + 6 + 2×limit + 少量例图` 次请求（默认约 30 次；匿名限速下约 30–40 秒）
+
+### 多张参考图 / 多角色（0.18.0 起）
+
+同一作者的一套图常常横跨好几个角色；只锚定一个角色会漏掉「画过其他角色、但整体画法相同」的画师。`character` 现在接受**逗号分隔的多个角色**（最多 3 个，前两个会各跑一次全站高分锚点并参与同角色核验）：
+
+- 多角色输入：`danbooru_style_match(character="firefly_(honkai:_star_rail), kafka_(honkai:_star_rail)", style_tags="shiny_skin, sweat", genre_tags="sex, hetero", limit=10, examples=2)`
+- 输出：`reference.characters` 是解析后的角色列表；`anchor_scans` 每个角色一条；每个候选多带 `same_character_breakdown`（逐角色作品数），`same_character_posts` 是各角色之和。
+- 推荐流程（本轮实测收敛最快）：① 参考图按角色/服装分组，每组挑最接近的 `style_tags` 各跑一次；② 汇总多轮候选，**同名画师跨轮出现**的优先；③ 对 finalist 抓 2–3 张代表作和参考图拼图，按六项清单整体比对；④ 用 `prefer_artists` 把入选者带回再跑一轮；⑤ 最后才写画师串权重。
+- 成本：每多一个角色约多 `1 + 2 + 2×limit` 次请求（前两个角色参与核验）。
+
+**本轮案例（15 张同一 AI 作者参考图）**：Firefly 9 张、蓝发泳装 3 张，棕发蓝挑染 / 深紫发 / 红发军装 / 粉发和服各 1 张。多轮检索（Firefly 锚点 → 泳装/latex/和服锚点 → prefer 迭代 → 13 名候选逐一看图）后收敛到：`hews`（脸/线条/构图主源）、`0haribo0`（背身/油亮/细线）、`harin_05`（苍白油亮肉体/POV）、`greem_bang`（重油光 + 深色乳晕）四个候选，`mochirong` / `mignon` 只作白底与冷调补充——比 0.16.x 只按特征 tag 得出的 `mochirong` 结论整体贴近得多。
 
 ## 部位特化搜索（画手 / 画脚 / 画腿…）
 
@@ -269,7 +309,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.16.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.18.1 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -307,7 +347,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装质感权重等 50 项检查）并校验返回结构与排序，约 2 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装质感权重、角色身份过滤、整体画风匹配的锚点/同角色/清单等 56 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -328,6 +368,9 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.18.1**：`artists_from_image` 不再把**角色身份/装饰特征**当成画风证据——发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）在评分前剔除并返回 `excluded_identity_tags`；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。全部 tag 都是身份特征时明确报错，提示改传绘制手法类 tag
+- **0.18.0**：`danbooru_style_match` 支持**多角色**——`character` 可传逗号分隔的多个角色（最多 3 个，前两个各跑全站高分锚点并参与同角色核验）；新增 `reference.characters` 与 `same_character_breakdown`（逐角色作品数，总数仍为 `same_character_posts`）；`verify.mjs` 增加多角色自检；README 增加「多张参考图 / 多角色」工作流与 15 图案例
+- **0.17.0**：新增 `danbooru_style_match`（整体画风匹配）：角色锚定 + 全站高分 `order:score` 扫描（名次衰减加权）+ `角色×题材/画风`、`画风×题材` pair 兜底 + `画师×角色` 同角色核验 + 例图；输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代参数，返回新增 `anchor_scans`、`anchor_score`/`pair_score`/`chart_top` 字段（全站前 10 名作品额外 ×1.3）；`verify.mjs` 增加 5 项自检
 - **0.16.1**：README 在「宇宙免责声明」与「安装」之间新增「大致使用教程（截图版）」三张示例图（以图搜画师 / 按年份找色彩艳丽作品 / 相似画师+年份限定），图片存于 `docs/tutorial/`
 - **0.16.0**：`artists_from_image` 新增 **服装质感** 维度 `clothing_tags`（person 0.10 / style 0.12，专吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 等材质 tag）；线条/手法权重微调（person 0.18/0.22、style 0.24/0.28），其余维度等比下调，总和仍为 1
 - **0.15.2**：加强线条与绘制手法的参考权重——`artists_from_image` person 模式 lineart 0.12→**0.20**、technique 0.20→**0.24**；style 模式 lineart 0.18→**0.26**、technique 0.26→**0.30**（其余维度等比下调，总和仍为 1）
