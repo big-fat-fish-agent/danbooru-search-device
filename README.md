@@ -84,6 +84,7 @@
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_style_match` | **整体画风匹配（角色锚定 → 同角色核验）**：先扫角色「全站最高分」作品（名次加权），再跑「角色×题材/画风」「画风×题材」pair 兜底，最后按「该画师同角色作品数」核验并附例图；输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。`character` 支持逗号分隔多个角色（多张参考图场景） | `character`、`style_tags`、`genre_tags`、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character` |
+| `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
@@ -279,6 +280,27 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 **本轮案例（15 张同一 AI 作者参考图）**：Firefly 9 张、蓝发泳装 3 张，棕发蓝挑染 / 深紫发 / 红发军装 / 粉发和服各 1 张。多轮检索（Firefly 锚点 → 泳装/latex/和服锚点 → prefer 迭代 → 13 名候选逐一看图）后收敛到：`hews`（脸/线条/构图主源）、`0haribo0`（背身/油亮/细线）、`harin_05`（苍白油亮肉体/POV）、`greem_bang`（重油光 + 深色乳晕）四个候选，`mochirong` / `mignon` 只作白底与冷调补充——比 0.16.x 只按特征 tag 得出的 `mochirong` 结论整体贴近得多。
 
+## 多方案共识（0.20.0 起）
+
+`danbooru_image_artist_consensus` 解决「单方案总会有误判」的问题：对同一张参考图跑 2–3 个不同方案，各自取短名单，再**只保留被 ≥2 个方案同时命中的画师**。
+
+```text
+danbooru_style_match(...)            → ["elocca,mignon,piutahayo"]
+danbooru_artists_from_image(...)     → ["hews,nyantcha,asou"]
+danbooru_similar_artists(artist=...) → ["m-da_s-tarou,sincos,hara"]
+
+danbooru_image_artist_consensus(
+  lists='["elocca,mignon,piutahayo","hews,nyantcha,asou","m-da_s-tarou,sincos,hara"]',
+  source_names="style_match,artists_from_image,similar_artists",
+  min_hits=2, limit=10, examples=3)
+```
+
+- 每个候选人带 `hits`（被几个方案命中）、`hit_sources`（命中方案名）、`avg_rank`（各方案内的平均名次，越小越靠前）
+- 排序：`hits` 降序 → `avg_rank` 升序 → 画师名
+- **没有画师达到 `min_hits` 时**：返回按 `hits` 排序的部分重叠榜，并设 `fallback_used=true`，提示换更相近的方案或降低门槛
+- 它本身不发检索请求（只为例图发请求），所以很快；先跑各方案再喂给它
+- 局限：共识只能降低随机误判，不能证明画风真的像——最终仍要 `read_image` 目视核对
+
 ## 部位特化搜索（画手 / 画脚 / 画腿…）
 
 `danbooru_part_specialists` 用 D 站的**部位焦点 tag** 检索「该部位 + 高收藏」作品，再按画师聚合，专门回答「谁画手/脚/腿/眼睛画得好」这类问题。
@@ -315,7 +337,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.19.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.20.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -353,7 +375,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单等 58 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、多方案共识等 59 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -374,6 +396,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.20.0**：新增 `danbooru_image_artist_consensus`（**多方案共识**）——融合 style_match / artists_from_image / similar_artists 等多份候选名单，只保留被 ≥`min_hits` 个方案命中的画师；带 `hits`/`hit_sources`/`avg_rank`，无交集时返回部分重叠榜并标 `fallback_used`；`verify.mjs` 增加 1 项自检（共 59 项）
 - **0.19.1**：`clothing` 维度明确改为「**服装材质效果**」——只衡量反光/高光、透明度、湿身、蕾丝/丝绸厚度与褶皱；服装款式名词（`lingerie`、`bra`、`shirt`…）作为身份特征被过滤，不再影响该项权重；文档与参数说明同步
 - **0.19.0**：按「整体画风匹配（style_match）」的实测结论优化识图——README 把 `danbooru_style_match` 定为以图搜画师首选、`artists_from_image` 降为交叉验证；`artists_from_image` 新增**单维度证据降权**（多维度搜索时 ×0.55，输出 `single_dimension` / `dimensions_used`），修掉「只靠 lineart 像就上榜」的问题
 - **0.18.1**：`artists_from_image` 不再把**角色身份/装饰特征**当成画风证据——发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）在评分前剔除并返回 `excluded_identity_tags`；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。全部 tag 都是身份特征时明确报错，提示改传绘制手法类 tag

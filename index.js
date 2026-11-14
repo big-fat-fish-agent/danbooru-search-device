@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.19.1'
+const VERSION = '0.20.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1445,6 +1445,107 @@ export function apply(ctx, rawConfig = {}) {
           candidates,
           note: 'Candidate generation uses shared Danbooru tags (frequent, non-universal seed tags), and expression similarity is measured separately: the seed\'s expression tags (smile, blush, half-closed_eyes, ...) are expanded to artists sharing them, then each finalist\'s expression-tag frequency profile is compared with the seed by cosine and folded into score (expression_weight, default 0.5). This is a heuristic, not visual embedding similarity. Confirm candidates visually on rendering (shading, highlights, palette), body build/pose, face features and expressions; for an artist-list deliverable keep three sample images per artist, for a post list keep one sample per post.',
         }
+      },
+    },
+    {
+      name: 'danbooru_image_artist_consensus',
+      description: 'Fuse candidate lists from several different retrieval schemes into one consensus list: an artist survives only when at least min_hits schemes returned them, which filters single-scheme flukes (e.g. an artist that only matched lineart in one scheme). Pass `lists` as a JSON array of comma-separated artist names, one string per scheme, e.g. \'["elocca,mignon,piutahayo","hews,asou,tayuido","m-da_s-tarou,sincos"]\'. This tool does NOT run the schemes itself (run danbooru_style_match / danbooru_artists_from_image / danbooru_similar_artists first); it only merges their shortlists and optionally attaches three distinct-cluster sample posts per finalist. When no artist reaches min_hits, it returns the best partial-overlap ranking and sets fallback_used=true.',
+      parameters: parameters({
+        lists: { type: 'string', description: 'Required. JSON array (as a string) of comma-separated artist names, one string per retrieval scheme.' },
+        source_names: { type: 'string', description: 'Optional comma-separated labels for the schemes, e.g. "style_match,artists_from_image,similar_artists".' },
+        min_hits: { type: 'integer', minimum: 2, maximum: 6, description: 'Schemes that must contain an artist for it to be kept (default 2).' },
+        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 10).' },
+        examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per finalist (default 0; each costs one request).' },
+        example_tags: { type: 'string', description: 'Comma-separated tags the example posts should prefer.' },
+        allow_no_face: { type: 'boolean', description: 'Use face-hidden compositions for examples too (only when the user explicitly asks for back views/silhouettes).' },
+      }, ['lists']),
+      output,
+      async execute(args, exec) {
+        const raw = String(args?.lists ?? '').trim()
+        if (!raw) throw new Error('lists is required: a JSON array of comma-separated artist names, one string per scheme')
+        let parsed
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          throw new Error('lists must be a JSON array as a string, e.g. \'["elocca,mignon","hews,asou"]\'')
+        }
+        if (!Array.isArray(parsed) || parsed.length < 2) throw new Error('lists needs at least two retrieval schemes')
+        const minHits = clamp(args?.min_hits, 2, 6, 2)
+        const limit = clamp(args?.limit, 1, 25, 10)
+        const exampleCount = clamp(args?.examples, 0, 3, 0)
+        const labels = parseTagList(String(args?.source_names ?? ''))
+        const schemes = parsed.map((entry, index) => {
+          const names = Array.isArray(entry) ? entry.map((name) => String(name ?? '')) : parseTagList(String(entry ?? ''))
+          return {
+            index,
+            label: labels[index] ?? `scheme_${index + 1}`,
+            names: [...new Set(names.map((name) => name.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean))],
+          }
+        })
+        const votes = new Map()
+        for (const scheme of schemes) {
+          scheme.names.forEach((name, position) => {
+            const vote = votes.get(name) ?? { name, hits: 0, sources: [], rankSum: 0 }
+            vote.hits += 1
+            vote.sources.push(scheme.label)
+            vote.rankSum += (position + 1) / scheme.names.length
+            votes.set(name, vote)
+          })
+        }
+        const ranked = [...votes.values()]
+          .map((vote) => ({ ...vote, avgRank: round(vote.rankSum / vote.hits, 3) }))
+          .sort((left, right) => right.hits - left.hits || left.avgRank - right.avgRank || left.name.localeCompare(right.name))
+        let kept = ranked.filter((vote) => vote.hits >= minHits)
+        const fallbackUsed = kept.length === 0
+        if (fallbackUsed) kept = ranked
+        kept = kept.slice(0, limit)
+
+        const candidates = kept.map((vote) => ({
+          name: vote.name,
+          artist_url: artistPostsUrl(vote.name),
+          hits: vote.hits,
+          hit_sources: vote.sources,
+          avg_rank: vote.avgRank,
+        }))
+
+        if (exampleCount > 0) {
+          const requiredTags = parseTagList(String(args?.example_tags ?? ''))
+          const allowNoFace = args?.allow_no_face === true
+          for (const candidate of candidates) {
+            try {
+              const samplePosts = await request('/posts.json', { tags: `${candidate.name} order:score`, limit: Math.min(100, exampleCount * 8) }, { signal: exec?.signal, ttlMs: TTL.posts })
+              const rows = (Array.isArray(samplePosts) ? samplePosts : [])
+                .filter((post) => (post.large_file_url || post.file_url) && !isVideoPost(post))
+                .map((post) => ({ post, general: splitTags(post.tag_string_general) }))
+              const hasRequired = (row) => requiredTags.length === 0 || requiredTags.some((tag) => row.general.includes(tag))
+              const hidesFace = (row) => [...FACE_HIDDEN_TAGS].some((tag) => row.general.includes(tag))
+              const preferred = rows.filter((row) => hasRequired(row) && (allowNoFace || !hidesFace(row)))
+              const requiredOnly = rows.filter((row) => hasRequired(row))
+              const pool = preferred.length > 0 ? preferred : requiredOnly.length > 0 ? requiredOnly : rows
+              candidate.examples = dedupeByCluster(pool).slice(0, exampleCount).map((row) => ({
+                post_id: row.post.id,
+                post_url: `${ORIGIN}/posts/${row.post.id}`,
+                sample_url: row.post.large_file_url ?? row.post.file_url ?? null,
+                preview_url: row.post.preview_file_url ?? null,
+                rating: row.post.rating ?? null,
+                matched_tags: requiredTags.filter((tag) => row.general.includes(tag)),
+              }))
+            } catch {
+              candidate.examples = []
+            }
+          }
+        }
+
+        return toLossless({
+          method: 'multi-scheme consensus (keep artists with hits >= min_hits)',
+          schemes: schemes.map((scheme) => ({ label: scheme.label, candidates: scheme.names.length })),
+          min_hits: minHits,
+          fallback_used: fallbackUsed,
+          candidates,
+          note: fallbackUsed
+            ? 'No artist reached min_hits in every scheme, so this ranking is the best partial overlap (fallback_used=true). Prefer feeding schemes that share tags/rendering signals, or lower min_hits.'
+            : 'Artists here were returned by at least min_hits schemes; single-scheme flukes are dropped. Still confirm visually: consensus reduces randomness but does not prove a visual match.',
+        })
       },
     },
     {

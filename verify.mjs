@@ -40,7 +40,7 @@ function check(label, condition, detail) {
   }
 }
 
-check('registers thirteen tools', registered.size === 13, `registered=${[...registered.keys()].join(', ')}`)
+check('registers fourteen tools', registered.size === 14, `registered=${[...registered.keys()].join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false
@@ -99,6 +99,9 @@ check('image search drops character identity features', Array.isArray(identityAr
 const materialArtists = await call('danbooru_artists_from_image', { image_tags: 'latex, shiny_clothes', clothing_tags: 'lingerie, latex, silk', limit: 3 })
 check('clothing dimension measures material effect, not garment type', materialArtists.excluded_identity_tags.includes('lingerie') && materialArtists.groups.some((group) => group.key === 'clothing' && group.tags.some((tag) => tag.tag === 'latex')) && materialArtists.groups.every((group) => group.tags.every((tag) => tag.tag !== 'lingerie')), JSON.stringify(materialArtists.excluded_identity_tags))
 check('image search demotes single-dimension evidence', imageArtists.candidates.every((candidate) => typeof candidate.dimensions_used === 'number' && candidate.dimensions_used >= 1 && typeof candidate.single_dimension === 'boolean') && imageArtists.candidates.some((candidate) => candidate.single_dimension === false), JSON.stringify(imageArtists.candidates.map((candidate) => [candidate.name, candidate.dimensions_used, candidate.single_dimension])))
+
+const consensus = await call('danbooru_image_artist_consensus', { lists: JSON.stringify(['hews,nyantcha,tayuido', 'nyantcha,shexyo', 'hews,asou']), source_names: 'a,b,c', min_hits: 2, limit: 5, examples: 0 })
+check('consensus keeps artists found by at least two schemes', consensus.candidates.map((candidate) => candidate.name).sort().join(',') === 'hews,nyantcha' && consensus.candidates.every((candidate) => candidate.hits >= 2) && consensus.fallback_used === false, JSON.stringify(consensus.candidates.map((candidate) => [candidate.name, candidate.hits])))
 
 const styleMatch = await call('danbooru_style_match', {
   character: 'firefly_(honkai:_star_rail)',
