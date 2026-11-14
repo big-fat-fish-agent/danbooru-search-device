@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.18.1'
+const VERSION = '0.19.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1449,7 +1449,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing texture 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing texture 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns such as lingerie/bra/shirt) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags (technique_tags, lineart_tags, clothing material tags, color_tags, lighting_tags) and body-build tags instead. Lineart and technique are weighted above the older defaults because they carry the "same drawing hand" signal, and clothing_tags adds a separate material cue (latex, leather, shiny_clothes, see-through_clothes). It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing texture 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing texture 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns such as lingerie/bra/shirt) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags (technique_tags, lineart_tags, clothing material tags, color_tags, lighting_tags) and body-build tags instead. Whole-look evidence beats single-signal flukes: when several dimensions are searched, artists supported by only one dimension get a ×0.55 demotion and are flagged single_dimension; each candidate reports dimensions_used. For a whole-look reverse search prefer danbooru_style_match first, then cross-check its shortlist here. Lineart and technique are weighted above the older defaults because they carry the "same drawing hand" signal, and clothing_tags adds a separate material cue (latex, leather, shiny_clothes, see-through_clothes). It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
@@ -1548,19 +1548,31 @@ export function apply(ctx, rawConfig = {}) {
           groupStats.push({ key: group.key, tags: tagStats, unique_clusters: seenInGroup.size, deduped_posts: dedupedPostCount })
         }
 
+        // Whole-look evidence beats single-signal flukes: an artist supported by only one dimension
+        // (e.g. lineart only) is demoted when several dimensions were actually searched.
+        const groupsUsed = groups.length
         const candidates = [...standing.values()]
-          .sort((left, right) => right.score - left.score || right.posts - left.posts || left.name.localeCompare(right.name))
-          .slice(0, limit)
           .map((entry) => {
+            const dimensionCount = Object.keys(entry.dimensions).length
+            const singleDimension = dimensionCount <= 1
+            const threeDShare = entry.posts > 0 ? entry.three_d / entry.posts : 0
+            const adjusted = entry.score * (1 - 0.7 * threeDShare) * (singleDimension && groupsUsed >= 2 ? 0.55 : 1)
+            return { entry, dimensionCount, singleDimension, adjusted }
+          })
+          .sort((left, right) => right.adjusted - left.adjusted || right.entry.posts - left.entry.posts || left.entry.name.localeCompare(right.entry.name))
+          .slice(0, limit)
+          .map(({ entry, dimensionCount, singleDimension, adjusted }) => {
             const threeDShare = entry.posts > 0 ? entry.three_d / entry.posts : 0
             return {
               name: entry.name,
               artist_url: artistPostsUrl(entry.name, year),
               // Candidates leaning on 3D/photoreal renders are pushed down: the target is a 2D drawing.
-              score: round(entry.score * 100 * (1 - 0.7 * threeDShare), 2),
+              score: round(adjusted * 100, 2),
               posts: entry.posts,
               three_d_share: round(threeDShare, 3),
               dimensions: entry.dimensions,
+              dimensions_used: dimensionCount,
+              single_dimension: singleDimension,
             }
           })
 
