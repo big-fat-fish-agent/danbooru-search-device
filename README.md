@@ -215,14 +215,14 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 | `expression` 表情 | 表情 tag | 0.12 | 0.02 |
 | `technique` 绘制手法 | 材质/上色（`latex`、`shiny_clothes`…） | **0.22** | **0.28** |
 | `lineart` 线条 | 线稿粗细/有无/彩色线（`lineart`、`colored_lineart`…） | **0.18** | **0.24** |
-| `clothing` 服装质感 | 材质 tag：`latex`、`leather`、`shiny_clothes`、`wet_clothes`、`see-through_clothes`、`lace`… | **0.10** | **0.12** |
+| `clothing` 服装材质效果 | 只测**材质效果**：反光/高光（`latex`、`shiny_clothes`）、透明（`see-through_clothes`）、湿身（`wet_clothes`）、蕾丝/丝绸厚度感（`lace`、`silk`）；服装款式（`lingerie`、`bra`、`shirt`、`dress`…）不计分、会被过滤 | **0.10** | **0.12** |
 | `color` 色彩 | 主色/饱和度/多彩/虹彩（`colorful`、`iridescent`…） | 0.06 | 0.12 |
 | `lighting` 光照 | 逆光/斑驳光/镜头光（`dappled_sunlight`、`backlighting`…） | 0.05 | 0.10 |
 | `tag` 泛 tag | 其余描述 tag | 0.05 | 0.04 |
 
-> 线条/绘制手法权重高于旧默认（person 模式 lineart 0.18、technique 0.22；style 模式 0.24 / 0.28），并新增 `clothing` **服装质感** 维度（0.10 / 0.12），专门吃 `latex`、`leather`、`shiny_clothes`、`see-through_clothes` 这类服装材质 tag——和 `technique`（皮肤/整体上色材质）分开计分。
+> 线条/绘制手法权重高于旧默认（person 模式 lineart 0.18、technique 0.22；style 模式 0.24 / 0.28）；`clothing` 维度只衡量**服装材质效果**（0.10 / 0.12）——反光、透明度、湿身、蕾丝/丝绸的厚度与褶皱，**不衡量服装款式**；`lingerie`、`bra`、`shirt` 这类款式名词属于角色身份特征，会被过滤掉。
 
-- **角色身份/装饰特征不计分**：发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）会在评分前被剔除，并在返回的 `excluded_identity_tags` 里列出；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。以图搜画师只该描述「怎么画的」，而不是「画的是谁」。
+- **角色身份/装饰特征不计分**：发色、瞳色、角、光环、兽耳、尾巴、饰品、服装款式名词（`lingerie`、`bra`、`shirt`…）会在评分前被剔除，并在返回的 `excluded_identity_tags` 里列出；**服装材质效果 tag**（`latex`、`shiny_clothes`、`see-through_clothes`、`lace`、`silk`）保留并计入 `clothing` 维度。以图搜画师只该描述「怎么画的」，而不是「画的是谁/穿了哪件款式的衣服」。
 - **单维度证据降权**：搜索了多个维度时，只被一个维度命中的画师（如只有 `lineart` 像的 tayuido）分数 ×0.55 并标 `single_dimension=true`、`dimensions_used`——避免「线条像就整张像」的误判
 - **强调「画风类似」**：用 `mode="style"` → 绘制手法 → 线条 → 服装质感 ≈ 色彩 → 光照 → 人物 → 表情 → tag
 - **强调「人物方面」或未说明**：`mode="person"`（默认）→ 人物 ≈ 绘制手法 → 线条 → 表情 → 服装质感 → 色彩 → 光照 → tag
@@ -315,7 +315,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.19.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.19.1 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -353,7 +353,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装质感权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单等 57 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单等 58 项检查）并校验返回结构与排序，约 2–3 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -374,6 +374,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.19.1**：`clothing` 维度明确改为「**服装材质效果**」——只衡量反光/高光、透明度、湿身、蕾丝/丝绸厚度与褶皱；服装款式名词（`lingerie`、`bra`、`shirt`…）作为身份特征被过滤，不再影响该项权重；文档与参数说明同步
 - **0.19.0**：按「整体画风匹配（style_match）」的实测结论优化识图——README 把 `danbooru_style_match` 定为以图搜画师首选、`artists_from_image` 降为交叉验证；`artists_from_image` 新增**单维度证据降权**（多维度搜索时 ×0.55，输出 `single_dimension` / `dimensions_used`），修掉「只靠 lineart 像就上榜」的问题
 - **0.18.1**：`artists_from_image` 不再把**角色身份/装饰特征**当成画风证据——发色、瞳色、角、光环、兽耳、尾巴、饰品、服装名词（`lingerie`、`bra`、`shirt`…）在评分前剔除并返回 `excluded_identity_tags`；材质 tag（`latex`、`lace`、`see-through_clothes`）保留。全部 tag 都是身份特征时明确报错，提示改传绘制手法类 tag
 - **0.18.0**：`danbooru_style_match` 支持**多角色**——`character` 可传逗号分隔的多个角色（最多 3 个，前两个各跑全站高分锚点并参与同角色核验）；新增 `reference.characters` 与 `same_character_breakdown`（逐角色作品数，总数仍为 `same_character_posts`）；`verify.mjs` 增加多角色自检；README 增加「多张参考图 / 多角色」工作流与 15 图案例

@@ -95,6 +95,9 @@ check('image search weights lineart, technique and clothing', imageArtists.weigh
 
 const identityArtists = await call('danbooru_artists_from_image', { image_tags: 'pink_hair, horns, white_lingerie', technique_tags: 'shiny_skin', limit: 3 })
 check('image search drops character identity features', Array.isArray(identityArtists.excluded_identity_tags) && identityArtists.excluded_identity_tags.includes('pink_hair') && identityArtists.excluded_identity_tags.includes('horns') && identityArtists.excluded_identity_tags.includes('white_lingerie') && identityArtists.groups.every((group) => group.key !== 'tag') && identityArtists.candidates.length > 0, JSON.stringify(identityArtists.excluded_identity_tags))
+
+const materialArtists = await call('danbooru_artists_from_image', { image_tags: 'latex, shiny_clothes', clothing_tags: 'lingerie, latex, silk', limit: 3 })
+check('clothing dimension measures material effect, not garment type', materialArtists.excluded_identity_tags.includes('lingerie') && materialArtists.groups.some((group) => group.key === 'clothing' && group.tags.some((tag) => tag.tag === 'latex')) && materialArtists.groups.every((group) => group.tags.every((tag) => tag.tag !== 'lingerie')), JSON.stringify(materialArtists.excluded_identity_tags))
 check('image search demotes single-dimension evidence', imageArtists.candidates.every((candidate) => typeof candidate.dimensions_used === 'number' && candidate.dimensions_used >= 1 && typeof candidate.single_dimension === 'boolean') && imageArtists.candidates.some((candidate) => candidate.single_dimension === false), JSON.stringify(imageArtists.candidates.map((candidate) => [candidate.name, candidate.dimensions_used, candidate.single_dimension])))
 
 const styleMatch = await call('danbooru_style_match', {
