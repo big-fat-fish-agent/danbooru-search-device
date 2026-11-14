@@ -8,6 +8,18 @@
 
 它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
 
+## 当前能力一览（14 个工具）
+
+- **检索**：`search_posts`（年份/评级/Hot/score）、`search_tags`、`get_tag`（wiki + 别名）、`related_tags`
+- **画师发现**：`top_artists`（HOT/周榜/参考权重三级采样）、`year_artists`（整年总收藏 + 体型 tag 闸门 + 肤色/肤质 + 整体色调参考）、`similar_artists`（tag 画像 + 表情画像余弦）
+- **以图搜画师**：`artists_from_image`（分层 tag 加权；角色身份/装饰特征自动剔除；单维度命中降权；同源变体聚簇去重）
+- **整体画风匹配**：`style_match`（画风优先；身份外貌 tag 剔除、`body_tags` 作次级证据；小体量画师共现发现 + `seed_artists` 点名加回 + 持久拒绝记忆；可选角色模式）
+- **多方案共识**：`image_artist_consensus`（多份候选名单交集，过滤单方案误判）
+- **部位特化**：`part_specialists`（按部位焦点 tag 的高收藏作品给画师排名）
+- **凭据**：`auth_status` / `save_credentials`（保存登录凭据解除匿名 tag 数限制）
+
+检索是 tag 频率/收藏数的启发式，不是视觉 embedding；所有画师名单最终都要 `read_image` 目视核对。
+
 ## 宇宙免责声明（Cosmic Disclaimer）
 
 > 本插件是「查询搬砖工」，不是内容提供者；它只负责把 Danbooru 的公开检索结果搬过来。
@@ -378,7 +390,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.27.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.27.1 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -437,6 +449,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.27.1**：更新插件介绍——DSH 描述、`package.json` 描述与 README 开头同步为当前 14 个工具与能力（画风优先匹配、小体量画师、`seed_artists`、拒绝记忆、多方案共识、服装材质效果、身份特征过滤、单维度降权等）；清理旧版本安装包与调试用对比图
 - **0.27.0**：拒绝记忆的语义修正——**只拦自动发现，点名即加回**：`avoid_artists` 记住的画师仍会被自动检索过滤（换下一个最接近的替代者），但 `seed_artists` 显式点名时会重新加进候选并标记 `reinstated_from_rejection` / `rejection_memory.reinstated_this_call`；`allow_rejected_artists` / `forget_artists` / `clear_rejections` 行为不变；`verify.mjs` 断言同步为「自动过滤 + 点名加回」（共 64 项）
 - **0.26.0**：新增**持久拒绝记忆与替代推荐**——`avoid_artists` 会记住被否的画师，后续轮次自动过滤，空出的名额由下一个最接近的画师补上（不再用同一个名字凑数）；`allow_rejected_artists` 仅本次忽略、`forget_artists` 释放单个、`clear_rejections` 清空；`style_match` / `similar_artists` / `artists_from_image` / 共识均生效，输出 `rejection_memory` / `rejected_excluded`；`verify.mjs` 增加 2 项自检（共 64 项）
 - **0.25.0**：`style_match` 引入 **`body_tags`（身体细节次级证据）**——体型/肤色/乳晕/肉感这类「身体细节的画法」是合法画风证据（不同画师差别极大），以 `style×body`、`body×genre` pair 与 `body_posts`/`body_share` 参与排序（画风模式权重 `0.38 锚点 + 0.15 pair + 0.15 画风核验 + 0.12 身体细节 + 0.08 共现 + 0.12 seed`）；同时**过滤身份/外貌 tag**（发色、瞳色、发型、饰品、服装名、角色名）并列入 `reference.rejected_body_tags`；`subject_tags` 改为 `body_tags` 的兼容别名；`verify.mjs` 改成断言「身体细节进入查询、发色被拒绝」；README 同步
