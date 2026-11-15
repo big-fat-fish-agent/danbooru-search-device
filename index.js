@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.34.0'
+const VERSION = '0.36.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -100,6 +100,14 @@ const formatWeightedTag = (tag, weight) => {
   return `${String(weight)}::${text}${/[0-9]$/.test(text.replace(/\\/g, '')) ? ' ' : ''}::`
 }
 
+/** NAI tokenizer glue for artist strings: a token ending in a digit must not be followed directly
+ * by the list delimiter, so put a space before the comma ("hews 2024 , ...") instead of letting the
+ * digit and the comma merge into one token. */
+const endsWithDigit = (text) => /[0-9]$/.test(String(text).replace(/\\/g, ''))
+const joinArtistString = (parts) => parts
+  .map((part, index) => (endsWithDigit(part) && index < parts.length - 1 ? `${part} ` : String(part)))
+  .join(', ')
+
 /** Ready-to-paste artist string built from the ranked finalists, in call order (best first). */
 function artistSoupFor(rows, maxArtists = ARTIST_SOUP_SHAPE.length) {
   const picked = (Array.isArray(rows) ? rows : []).slice(0, maxArtists)
@@ -115,12 +123,13 @@ function artistSoupFor(rows, maxArtists = ARTIST_SOUP_SHAPE.length) {
   }))
   const total = artists.reduce((sum, row) => sum + row.weight, 0)
   const top3 = artists.slice(0, 3).reduce((sum, row) => sum + row.weight, 0)
+  const body = joinArtistString(artists.map((row) => formatWeightedTag(row.name, row.weight)))
   return {
-    string: `${artists.map((row) => formatWeightedTag(row.name, row.weight)).join(', ')},`,
+    string: endsWithDigit(body) ? `${body} ,` : `${body},`,
     artists,
     total_weight: round(total, 2),
     top3_share: round(top3 / total, 2),
-    note: 'Paste as the artist block of a NAI v5 prompt: weight 1 stays bare, and a name ending in a digit is followed by a space before `::`. Shape = one 1.0 anchor then 0.85/0.6/0.5/0.4/0.3/0.2. Keep the 1.0 anchor: deleting the top name to "clean up" the soup is what made an earlier round drift. Drop the ≤0.3 tail before changing the top three. Rendering is judged on the five axes in `verify`, not on rank.',
+    note: 'Paste as the artist block of a NAI v5 prompt: weight 1 stays bare, and a name ending in a digit is followed by a space before `::` and before the comma (e.g. "hews 2024 , ..."). Shape = one 1.0 anchor then 0.85/0.6/0.5/0.4/0.3/0.2. Keep the 1.0 anchor: deleting the top name to "clean up" the soup is what made an earlier round drift. Drop the ≤0.3 tail before changing the top three. Rendering is judged on the five axes in `verify`, not on rank.',
   }
 }
 
@@ -588,6 +597,7 @@ function mapPost(post) {
 const PIXEL_PY_SCRIPT = String.raw`
 import json, sys
 from PIL import Image
+from collections import deque
 
 SIDE = 128
 
@@ -655,14 +665,293 @@ def features(path):
 
     return [round(lum_mean, 4), round(lum_std, 4), round(grad_mean, 4), round(edge_ratio, 4), round(lap_mean, 4), round(colorfulness, 4), round(sat_mean, 4), round(sat_std, 4)] + [round(v, 4) for v in grad_hist] + [round(v, 4) for v in hue_hist]
 
+SURF_SIDE = 448
+
+
+def _clamp(v, lo, hi):
+    return lo if v < lo else hi if v > hi else v
+
+
+def _pct(sorted_vals, q):
+    if not sorted_vals:
+        return 0.0
+    return sorted_vals[int(q * (len(sorted_vals) - 1))]
+
+
+def surface(path):
+    '''Surface-finish axes (0-100) that separate matte thick painting ("oily") from
+    glossy cel shading. Appended after the 28 style descriptor numbers.'''
+    im = Image.open(path).convert('RGB').resize((SURF_SIDE, SURF_SIDE), Image.BILINEAR)
+    pix = list(im.getdata())
+    n_all = SURF_SIDE * SURF_SIDE
+
+    lum = [0.299 * r + 0.587 * g + 0.114 * b for (r, g, b) in pix]
+    sat = []
+    hue = []
+    for (r, g, b) in pix:
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        d = mx - mn
+        s = 0.0 if mx == 0 else d / mx
+        sat.append(s)
+        if d > 6:
+            if mx == r:
+                h = ((g - b) / d) % 6.0
+            elif mx == g:
+                h = ((b - r) / d) + 2.0
+            else:
+                h = ((r - g) / d) + 4.0
+            hue.append(h / 6.0)
+        else:
+            hue.append(0.0)
+
+    skin = [False] * n_all
+    n_skin = 0
+    for i in range(n_all):
+        if 0.012 < hue[i] < 0.135 and 0.04 < sat[i] < 0.62 and lum[i] > 102:
+            skin[i] = True
+            n_skin += 1
+    if n_skin < 3000:
+        skin = [True] * n_all
+        n_skin = n_all
+
+    gm = [0.0] * n_all
+    for y in range(1, SURF_SIDE - 1):
+        row = y * SURF_SIDE
+        for x in range(1, SURF_SIDE - 1):
+            i = row + x
+            gx = (lum[i + 1] - lum[i - 1]) * 0.5
+            gy = (lum[i + SURF_SIDE] - lum[i - SURF_SIDE]) * 0.5
+            gm[i] = ((gx * gx + gy * gy) ** 0.5) / 255.0
+
+    skin_gm = sorted(gm[i] for i in range(n_all) if skin[i])
+    g_mean = (sum(skin_gm) / len(skin_gm)) if skin_gm else 0.0
+    g_peak = _pct(skin_gm, 0.995)
+    edge_soft = g_mean / (g_peak + 1e-6)
+
+    skin_lum = sorted(lum[i] for i in range(n_all) if skin[i])
+    black_lift = _pct(skin_lum, 0.05) / 255.0
+    thr = _pct(skin_lum, 0.95) / 255.0
+
+    sheen_hits = 0
+    for i in range(n_all):
+        if skin[i] and lum[i] >= 178 and sat[i] < 0.45:
+            sheen_hits += 1
+    sheen = sheen_hits / n_skin
+
+    bright = [False] * n_all
+    for i in range(n_all):
+        if skin[i] and (lum[i] / 255.0) >= thr and sat[i] < 0.30:
+            bright[i] = True
+    if sum(1 for i in range(n_all) if bright[i]) < 200:
+        for i in range(n_all):
+            if skin[i] and (lum[i] / 255.0) >= thr:
+                bright[i] = True
+
+    bnd = []
+    for y in range(1, SURF_SIDE - 1):
+        row = y * SURF_SIDE
+        for x in range(1, SURF_SIDE - 1):
+            i = row + x
+            if bright[i]:
+                continue
+            if bright[i - 1] or bright[i + 1] or bright[i - SURF_SIDE] or bright[i + SURF_SIDE]:
+                bnd.append(gm[i])
+    spec_hard = ((sum(bnd) / len(bnd)) / (g_mean + 1e-6)) if len(bnd) > 30 else 0.0
+
+    step = 4
+    gw = SURF_SIDE // step
+    small = [False] * (gw * gw)
+    for y in range(gw):
+        base = (y * step) * SURF_SIDE
+        for x in range(gw):
+            if bright[base + x * step]:
+                small[y * gw + x] = True
+    seen = [False] * (gw * gw)
+    areas = []
+    for idx in range(gw * gw):
+        if not small[idx] or seen[idx]:
+            continue
+        q = deque([idx])
+        seen[idx] = True
+        n = 0
+        while q:
+            cur = q.popleft()
+            n += 1
+            cy, cx = divmod(cur, gw)
+            for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+                if 0 <= ny < gw and 0 <= nx < gw:
+                    nidx = ny * gw + nx
+                    if small[nidx] and not seen[nidx]:
+                        seen[nidx] = True
+                        q.append(nidx)
+        if n >= 2:
+            areas.append(n * step * step)
+    areas.sort()
+    spec_size = ((_pct(areas, 0.5) / n_skin) * 100.0) if areas else 0.0
+
+    bs = 16
+    block_std = []
+    for by in range(0, SURF_SIDE - bs + 1, bs):
+        for bx in range(0, SURF_SIDE - bs + 1, bs):
+            vals = []
+            for yy in range(by, by + bs, 2):
+                base = yy * SURF_SIDE
+                for xx in range(bx, bx + bs, 2):
+                    i = base + xx
+                    if skin[i]:
+                        vals.append(lum[i])
+            if len(vals) > (bs * bs) // 5:
+                m = sum(vals) / len(vals)
+                block_std.append((sum((v - m) ** 2 for v in vals) / len(vals)) ** 0.5)
+    block_std.sort()
+    contrast = (_pct(block_std, 0.5) / 255.0) if block_std else 0.0
+
+    chroma = _pct(sorted(sat[i] for i in range(n_all) if skin[i]), 0.5)
+
+    a_spec_hard = _clamp(spec_hard / 3.0 * 100.0, 0, 100)
+    a_sheen = _clamp(sheen / 0.45 * 100.0, 0, 100)
+    a_spec_size = _clamp((spec_size ** 0.5) / (6 ** 0.5) * 100.0, 0, 100)
+    a_edge_soft = _clamp(edge_soft / 0.20 * 100.0, 0, 100)
+    a_contrast = _clamp((contrast - 0.02) / 0.10 * 100.0, 0, 100)
+    a_black_lift = _clamp((black_lift - 0.15) / 0.35 * 100.0, 0, 100)
+    a_chroma = _clamp((chroma - 0.08) / 0.22 * 100.0, 0, 100)
+
+    matte = (100 - a_spec_hard) * 0.28 + a_sheen * 0.20 + a_spec_size * 0.10 \
+        + a_edge_soft * 0.14 + (100 - a_contrast) * 0.12 \
+        + a_black_lift * 0.08 + (100 - a_chroma) * 0.08
+
+    return [round(a_spec_hard, 1), round(a_sheen, 1), round(a_spec_size, 1),
+            round(a_edge_soft, 1), round(a_contrast, 1), round(a_black_lift, 1),
+            round(a_chroma, 1), round(matte, 1)]
+
+
 out = []
 for path in sys.argv[1:]:
     try:
-        out.append(features(path))
+        out.append(features(path) + surface(path))
     except Exception as exc:
         out.append({'error': str(exc)})
 print(json.dumps(out))
 `
+
+/**
+ * Surface-finish axes. Every descriptor vector carries the 28 style numbers followed by
+ * these 8 surface numbers, all 0-100. They exist because "smooth + low saturation" cannot
+ * tell matte thick painting from glossy cel shading: the first sample is a matte, oily
+ * thick-paint portrait (specular edges dissolved, low micro-contrast, grey skin), the
+ * second is the same character in a glossy cel look (hard white speculars, 3x the
+ * contrast, 3x the skin chroma). The ranking descriptor alone put those two at 96 and 95.
+ */
+const DESC_LEN = 28
+
+const SURFACE_AXES = [
+  { key: 'specHard', zh: '高光硬度', desc: '高光斑边界的梯度强度：越低=光斑边缘化开(油膜)，越高=硬边白点(镜面)' },
+  { key: 'sheen', zh: '柔光覆盖', desc: '皮肤大面积亮部的占比：越高=整片泛油光(腻)，越低=干哑' },
+  { key: 'specSize', zh: '高光尺度', desc: '高光斑的中位面积：越大=大片油光，越小=碎白点' },
+  { key: 'edgeSoft', zh: '边缘软化', desc: '平均梯度/峰值梯度：越高=过渡绵长(厚涂)，越低=硬边分界(赛璐璐)' },
+  { key: 'contrast', zh: '微对比', desc: '皮肤区局部标准差：越低=雾面低反差，越高=强反差' },
+  { key: 'blackLift', zh: '暗部抬升', desc: '皮肤暗部亮度：越高=暗部发灰(厚涂习惯)，越低=压死黑' },
+  { key: 'chroma', zh: '色度', desc: '皮肤平均饱和度：越低=灰调，越高=高纯肉色' },
+  { key: 'matte', zh: '雾面度', desc: '综合雾面度 0-100：越高=雾面厚涂/油腻，越低=亮面赛璐璐/镜面' },
+]
+
+/**
+ * Named surface profiles. Gates are one-sided bounds on the 0-100 axes; a candidate must
+ * satisfy every gate. Calibrated on a matte thick-paint portrait (specHard 23.0, sheen 100,
+ * contrast 15.8, chroma 16.9, blackLift 84.9, matte 73.2) and its glossy cel counterpart
+ * (56.5 / 67.4 / 37.7 / 60.7 / 78.6 / 52.1): the first passes all six matte gates, the
+ * second fails five of them.
+ */
+const SURFACE_PROFILES = {
+  matte_thick: {
+    label: '雾面厚涂 / 油腻',
+    summary: '光斑边缘化开、整片泛油、低微反差、低色度、暗部发灰',
+    gates: [
+      { key: 'specHard', max: 40 },
+      { key: 'sheen', min: 85 },
+      { key: 'contrast', max: 28 },
+      { key: 'chroma', max: 35 },
+      { key: 'blackLift', min: 60 },
+      { key: 'matte', min: 65 },
+    ],
+  },
+  gloss_cel: {
+    label: '亮面赛璐璐 / 镜面',
+    summary: '硬边白高光、强微反差、高纯肉色、雾面度低',
+    gates: [
+      { key: 'specHard', min: 45 },
+      { key: 'contrast', min: 30 },
+      { key: 'chroma', min: 45 },
+      { key: 'matte', max: 55 },
+    ],
+  },
+}
+
+const SURFACE_CORE_AXES = SURFACE_AXES.filter((axis) => axis.key !== 'matte').map((axis) => axis.key)
+
+/** Turn 8 raw axis numbers into named scores. Returns null when the vector is too short. */
+function surfaceScores(vector) {
+  if (!Array.isArray(vector) || vector.length < DESC_LEN + SURFACE_AXES.length) return null
+  const raw = vector.slice(DESC_LEN, DESC_LEN + SURFACE_AXES.length)
+  const scores = {}
+  SURFACE_AXES.forEach((axis, index) => {
+    scores[axis.key] = Number(raw[index] ?? 0)
+  })
+  return scores
+}
+
+/**
+ * Judge surface scores against a named profile (or an explicit gate list).
+ * Read-only pure function, exported so the criteria can be tested without a tool call.
+ */
+export function surfaceVerdict(values, profileKey = 'matte_thick', gates) {
+  const scores = Array.isArray(values) ? surfaceScores(values) ?? asScores(values) : values
+  if (!scores) return null
+  const spec = Array.isArray(gates) ? gates : (SURFACE_PROFILES[profileKey] ?? SURFACE_PROFILES.matte_thick).gates
+  const checks = spec.map((gate) => {
+    const value = Number(scores[gate.key] ?? 0)
+    const ok = (gate.min == null || value >= gate.min) && (gate.max == null || value <= gate.max)
+    return { axis: gate.key, value, min: gate.min ?? null, max: gate.max ?? null, ok }
+  })
+  const failed = checks.filter((check) => !check.ok).map((check) => check.axis)
+  return {
+    profile: profileKey,
+    label: (SURFACE_PROFILES[profileKey] ?? {}).label ?? 'custom',
+    scores,
+    checks,
+    pass: failed.length === 0,
+    failed,
+    verdict: failed.length === 0
+      ? 'pass'
+      : `fail (${failed.join(', ')})`,
+  }
+
+  function asScores(object) {
+    if (!object || typeof object !== 'object') return null
+    const out = {}
+    for (const axis of SURFACE_AXES) out[axis.key] = Number(object[axis.key] ?? 0)
+    return out
+  }
+}
+
+/** How close two surface profiles are on the six core axes (100 = identical finish). */
+function surfaceSimilarity(left, right) {
+  if (!left || !right) return null
+  const diffs = SURFACE_CORE_AXES.map((key) => Math.abs(Number(left[key] ?? 0) - Number(right[key] ?? 0)))
+  return round(Math.max(0, 100 - diffs.reduce((sum, value) => sum + value, 0) / diffs.length), 1)
+}
+
+/** Element-wise mean of several surface score objects. */
+function meanSurface(list) {
+  const valid = list.filter(Boolean)
+  if (valid.length === 0) return null
+  const out = {}
+  for (const axis of SURFACE_AXES) {
+    out[axis.key] = round(valid.reduce((sum, item) => sum + Number(item[axis.key] ?? 0), 0) / valid.length, 1)
+  }
+  return out
+}
 
 /**
  * Artist-string slots ("本次构成"): each slot stands for ONE job the artist does in
@@ -731,7 +1020,7 @@ function buildArtistString(candidates, options = {}) {
     // Weight 1 is emitted bare (no `::` wrapper); all other slots keep the explicit weight.
     return formatWeightedTag(tag, entry.weight)
   })
-  return { string: parts.join(', '), slots }
+  return { string: joinArtistString(parts), slots }
 }
 
 const output = {
@@ -876,9 +1165,12 @@ export function apply(ctx, rawConfig = {}) {
     return parsed
   }
 
-  /** Weighted L1 distance between two descriptor vectors (0 = identical look). */
+  /** Weighted L1 distance between two descriptor vectors (0 = identical look).
+   * Vectors also carry the 8 surface numbers; the style distance ignores them. */
   function pixelDistance(left, right) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return 1
+    const leftStyle = Array.isArray(left) ? left.slice(0, DESC_LEN) : left
+    const rightStyle = Array.isArray(right) ? right.slice(0, DESC_LEN) : right
+    if (!Array.isArray(leftStyle) || !Array.isArray(rightStyle) || leftStyle.length !== rightStyle.length) return 1
     const weights = [
       ...PIXEL_WEIGHTS.scalar,
       ...Array(8).fill(PIXEL_WEIGHTS.gradient / 8),
@@ -887,7 +1179,7 @@ export function apply(ctx, rawConfig = {}) {
     let total = 0
     let weightSum = 0
     for (let index = 0; index < weights.length; index += 1) {
-      total += weights[index] * Math.abs(Number(left[index] ?? 0) - Number(right[index] ?? 0))
+      total += weights[index] * Math.abs(Number(leftStyle[index] ?? 0) - Number(rightStyle[index] ?? 0))
       weightSum += weights[index]
     }
     return weightSum > 0 ? total / weightSum : 1
@@ -937,7 +1229,7 @@ export function apply(ctx, rawConfig = {}) {
   const tools = [
   {
     name: 'danbooru_pixel_style_match',
-    description: 'Pixel-similarity style matching: ranks artist candidates by how their actual images look, not by tag co-occurrence. Give it one or more reference images (URLs or local paths; these are the images the user attached) and it builds a candidate artist pool from tags or an explicit list, downloads 1-3 sample images per artist plus the references, and compares them with a local Pillow descriptor (line/edge statistics, shading smoothness, colourfulness, saturation, hue distribution). Identity/appearance tags never score: the ranking is image-to-image, so "white-haired image → artists who draw white hair" cannot be produced by tag frequency. Pool parameters mirror danbooru_style_match (style_tags/body_tags/genre_tags, pool_pages, cooccurrence_limit) but the tag channels only nominate candidates. Requires Python with Pillow (DSH ships one; override with DSH_PYTHON). Set candidate_artists to skip pool building and compare exactly those artists.',
+    description: 'Pixel-similarity style matching: ranks artist candidates by how their actual images look, not by tag co-occurrence. Give it one or more reference images (URLs or local paths; these are the images the user attached) and it builds a candidate artist pool from tags or an explicit list, downloads 1-3 sample images per artist plus the references, and compares them with a local Pillow descriptor (line/edge statistics, shading smoothness, colourfulness, saturation, hue distribution). Identity/appearance tags never score: the ranking is image-to-image, so "white-haired image → artists who draw white hair" cannot be produced by tag frequency. Pool parameters mirror danbooru_style_match (style_tags/body_tags/genre_tags, pool_pages, cooccurrence_limit) but the tag channels only nominate candidates. Requires Python with Pillow (DSH ships one; override with DSH_PYTHON). Set candidate_artists to skip pool building and compare exactly those artists. Every candidate is ALSO scored on surface finish (specular hardness, sheen coverage, micro-contrast, chroma, black lift, matte composite) and reported with matte, surface and surface_similarity: the style score cannot separate matte thick painting from glossy cel shading — both score ~95 — so pass surface_gate="matte_thick" when the reference is matte/oily, otherwise hard-specular artists get recommended for a matte reference.',
     parameters: parameters({
       reference_images: { type: 'string', description: 'Required. Comma-separated reference images: direct image URLs, Danbooru post URLs (e.g. https://danbooru.donmai.us/posts/123456, resolved via the API) or local file paths (1-8). These are compared pixel-wise against each candidate\'s sample images.' },
       candidate_artists: { type: 'string', description: 'Optional comma-separated artist tags to compare directly (skips the tag pool; use it to test a shortlist or a user-named artist).' },
@@ -955,6 +1247,7 @@ export function apply(ctx, rawConfig = {}) {
       limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 8).' },
       rating: { type: 'string', enum: ['g', 's', 'q', 'e', 'all'], description: 'Rating filter for sample posts (default all, R18 included).' },
       allow_rejected_artists: { type: 'boolean', description: 'Ignore the remembered rejection list for this call only. Rejected artists are otherwise filtered from the result like the other artist tools.' },
+      surface_gate: { type: 'string', enum: ['none', 'matte_thick', 'gloss_cel'], description: 'Optional finish gate on the CANDIDATE artists\' own images. "matte_thick" keeps only artists whose skin finish is matte thick painting (specular edges dissolved, broad oily sheen, low micro-contrast, low chroma, lifted blacks); "gloss_cel" keeps only hard-specular cel artists. Use matte_thick when the reference is a matte/oily painting: the style ranking cannot separate the two finishes (both score ~95), so without the gate hard-specular artists get recommended for matte references. Default none = report only.' },
     }, ['reference_images']),
     output,
     async execute(args, exec) {
@@ -973,6 +1266,7 @@ export function apply(ctx, rawConfig = {}) {
       const explicitArtists = [...new Set(parseTagList(args?.candidate_artists).map(keyOf).filter(Boolean))]
       const rating = ['g', 's', 'q', 'e'].includes(args?.rating) ? args.rating : 'all'
       const allowRejected = args?.allow_rejected_artists === true
+      const surfaceGate = ['matte_thick', 'gloss_cel'].includes(args?.surface_gate) ? args.surface_gate : 'none'
       const yearCheck = args?.year_check !== false
       const currentYear = new Date().getFullYear()
       const requestedYears = (() => {
@@ -1090,10 +1384,12 @@ export function apply(ctx, rawConfig = {}) {
               url: job.entry.url,
               distance: null,
               vector,
+              surface: surfaceScores(vector),
             })
           }
         })
         if (refFeatures.length === 0) throw new Error('could not decode any reference image (supports jpg/png/webp/gif)')
+        const refSurface = meanSurface(refFeatures.map(surfaceScores))
         for (const sample of sampleResults) {
           sample.distance = Math.min(...refFeatures.map((ref) => pixelDistance(ref, sample.vector)))
         }
@@ -1107,22 +1403,47 @@ export function apply(ctx, rawConfig = {}) {
         const candidates = [...byArtist.entries()]
           .map(([name, info]) => {
             const best = [...info.samples].sort((left, right) => left.distance - right.distance).slice(0, samplesPerArtist)
+            const artistSurface = meanSurface(info.samples.map((sample) => sample.surface))
             return {
               name,
               artist_url: artistPostsUrl(name),
               similarity: round((1 - Math.min(1, info.distance)) * 100, 1),
               distance: round(info.distance, 4),
+              matte: artistSurface ? artistSurface.matte : null,
+              surface: artistSurface,
+              surface_similarity: surfaceSimilarity(refSurface, artistSurface),
               samples: best.map((sample) => ({
                 post_id: sample.post.id,
                 post_url: `${ORIGIN}/posts/${sample.post.id}`,
                 sample_url: sample.url,
                 rating: sample.post.rating ?? null,
                 distance: round(sample.distance, 4),
+                matte: sample.surface ? sample.surface.matte : null,
               })),
             }
           })
           .sort((left, right) => right.similarity - left.similarity || left.name.localeCompare(right.name))
-        const filtered = filterRejectedArtists(candidates)
+
+        // Surface gate: a candidate must itself have the requested finish. The style ranking
+        // cannot see this (a glossy cel image and a matte painting both score ~95), so the
+        // gate is what keeps "hard specular" artists out of a matte-thick-paint string.
+        const gateProfile = surfaceGate
+        const gateExcluded = []
+        let gatedCandidates = candidates
+        if (gateProfile !== 'none') {
+          gatedCandidates = []
+          for (const candidate of candidates) {
+            const verdict = surfaceVerdict(candidate.surface, gateProfile)
+            candidate.surface_gate = verdict ? { profile: gateProfile, pass: verdict.pass, failed: verdict.failed } : null
+            if (verdict && verdict.pass) gatedCandidates.push(candidate)
+            else gateExcluded.push({ name: candidate.name, matte: candidate.matte, failed: verdict?.failed ?? ['no_surface'] })
+          }
+          if (gatedCandidates.length === 0) {
+            gatedCandidates = candidates
+            gateExcluded.length = 0
+          }
+        }
+        const filtered = filterRejectedArtists(gatedCandidates)
         const kept = filtered.kept.slice(0, limit)
 
         // Year fit: for each returned artist, compare their works from each requested year against
@@ -1194,11 +1515,16 @@ export function apply(ctx, rawConfig = {}) {
             candidate.artist_with_years = candidate.name
           }
         }
-        const artistString = kept.map((candidate) => candidate.artist_with_years).join(', ')
+        const artistString = joinArtistString(kept.map((candidate) => candidate.artist_with_years))
 
         return toLossless({
-          method: 'pixel style descriptor (edge/line statistics, shading smoothness, colourfulness, saturation, hue histogram)',
+          method: 'pixel style descriptor (edge/line statistics, shading smoothness, colourfulness, saturation, hue histogram) + surface-finish axes (specular hardness, sheen coverage, micro-contrast, chroma, black lift, matte score)',
           reference_images: refs.length,
+          reference_surface: refSurface ? {
+            ...refSurface,
+            verdict: surfaceVerdict(refSurface, surfaceGate === 'none' ? 'matte_thick' : surfaceGate)?.verdict ?? null,
+            note: 'Measured on the reference image(s). Gates are in surface_profiles.',
+          } : null,
           pool: {
             scans: poolScans,
             cooccurrence_limit: cooccurrenceLimit,
@@ -1206,10 +1532,17 @@ export function apply(ctx, rawConfig = {}) {
             samples_downloaded: sampleResults.length,
           },
           artist_string: artistString,
+          surface_gate: gateProfile === 'none' ? { profile: 'none' } : {
+            profile: gateProfile,
+            label: SURFACE_PROFILES[gateProfile]?.label ?? null,
+            gates: SURFACE_PROFILES[gateProfile]?.gates ?? [],
+            excluded: gateExcluded,
+            note: 'Excluded artists failed the finish gate on their own sample images, whatever their style similarity was.',
+          },
           year_check: yearReport,
           candidates: kept,
           rejected_excluded: filtered.excluded,
-          note: 'Ranking is image-to-image so identity tags (hair colour, eyes, costume, character) cannot drive it; tag channels only nominate the candidate pool. artist_with_years appends the year(s) whose works are closest to the reference ("hews 2024 2025" = both years are within year_tolerance of the artist\'s best year); artist_string carries those annotations for the whole list. The descriptor compares line/edge texture, shading smoothness, colourfulness, saturation and hue distribution — a heuristic, not a neural embedding: confirm the top artists visually. Requires Python+Pillow (DSH_PYTHON overrides discovery).',
+          note: 'Ranking is image-to-image so identity tags (hair colour, eyes, costume, character) cannot drive it; tag channels only nominate the candidate pool. artist_with_years appends the year(s) whose works are closest to the reference ("hews 2024 2025" = both years are within year_tolerance of the artist\'s best year); artist_string carries those annotations for the whole list. The descriptor compares line/edge texture, shading smoothness, colourfulness, saturation and hue distribution — a heuristic, not a neural embedding: confirm the top artists visually. Every candidate also carries surface numbers 0-100 (matte = matte thick-paint score; specHard = specular edge hardness) and surface_similarity to the reference: a style score near 100 does NOT mean the finish matches, because a glossy cel image and a matte painting both look "smooth and low-saturation" to the edge descriptor. Pass surface_gate="matte_thick" when the reference is matte/oily. Requires Python+Pillow (DSH_PYTHON overrides discovery).',
         })
       } finally {
         try {
@@ -1220,6 +1553,92 @@ export function apply(ctx, rawConfig = {}) {
       }
     },
   },
+
+    {
+      name: 'danbooru_surface_profile',
+      description: 'Measure the SURFACE FINISH of images and judge it against a named profile. This answers "is this matte thick painting (oily) or hard-specular cel shading?" with numbers, which the tag tools and the style ranking cannot: tag co-occurrence has no finish channel, and the pixel style descriptor scores a glossy cel image and a matte oil painting almost identically (~95 both) because both are smooth and low-saturation. Eight 0-100 axes are returned per image: specHard (specular edge hardness: LOW = edges dissolved into oily patches, HIGH = crisp white speculars), sheen (share of skin that is a broad bright sheen: the actual "oily" signal), specSize (median specular patch size), edgeSoft (average/peak gradient: high = long painterly ramps), contrast (skin micro-contrast: low = matte haze), blackLift (skin shadow level: high = lifted grey blacks), chroma (skin saturation: low = greyed), and matte (weighted composite; high = matte thick-paint/oily, low = glossy cel). Profiles: matte_thick requires specHard<=40, sheen>=85, contrast<=28, chroma<=35, blackLift>=60, matte>=65; gloss_cel is the mirror (specHard>=45, contrast>=30, chroma>=45, matte<=55). Calibration reference: a matte oily portrait scores specHard 23 / sheen 100 / contrast 15.8 / chroma 16.9 (matte 73.2) and its glossy cel counterpart 56.5 / 67.4 / 37.7 / 60.7 (matte 52.1) — the first passes all six matte gates, the second fails five. Use it to screen artist samples BEFORE adding a name to an artist string, or to check the user\'s own output against their reference. Requires Python with Pillow (DSH ships one).',
+      parameters: parameters({
+        images: { type: 'string', description: 'Required. Comma-separated images to score: local file paths, direct image URLs, or Danbooru post URLs (1-24). Use a folder\'s files to score one artist; 3 or more same-subject images are recommended per artist because a single image can vary by up to ~40 points.' },
+        profile: { type: 'string', enum: ['matte_thick', 'gloss_cel', 'none'], description: 'Gate profile to judge against (default matte_thick). "none" reports the axes without pass/fail.' },
+        reference: { type: 'string', description: 'Optional comma-separated reference image(s): the same axes are measured on them, and every input image is annotated with surface_similarity to that reference finish (100 = identical finish).' },
+      }, ['images']),
+      output,
+      async execute(args, exec) {
+        const inputs = String(args?.images ?? '').split(/\s*,\s*/).map((value) => value.trim()).filter(Boolean)
+        if (inputs.length === 0) throw new Error('images is required: comma-separated local paths, image URLs or Danbooru post URLs')
+        if (inputs.length > 24) throw new Error('images accepts at most 24 images')
+        const refInputs = String(args?.reference ?? '').split(/\s*,\s*/).map((value) => value.trim()).filter(Boolean)
+        const profileKey = ['matte_thick', 'gloss_cel'].includes(args?.profile) ? args.profile : 'none'
+        const fs = await import('node:fs')
+        const os = await import('node:os')
+        const path = await import('node:path')
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-surface-'))
+        try {
+          const resolved = await Promise.all([...refInputs, ...inputs].map((url) => resolvePixelReference(url, exec?.signal)))
+          const files = await mapWithConcurrency(resolved, 6, async (url, index) => {
+            try {
+              return await fetchPixelImage(url, tmpDir, index)
+            } catch (error) {
+              return { error: error.message, path: null }
+            }
+          })
+          const usable = files.filter((file) => file.path)
+          if (usable.length === 0) throw new Error('could not download or read any image; check the paths/URLs')
+          const rows = await computePixelFeatures(usable.map((file) => file.path))
+          const byPath = new Map(usable.map((file, index) => [file.path, rows[index]]))
+          const scored = files.map((file, index) => {
+            const vector = file.path ? byPath.get(file.path) : null
+            const scores = Array.isArray(vector) ? surfaceScores(vector) : null
+            return {
+              input: resolved[index],
+              kind: index < refInputs.length ? 'reference' : 'image',
+              error: file.error ?? (scores ? null : 'image could not be decoded'),
+              surface: scores,
+            }
+          })
+          const refSurface = meanSurface(scored.filter((row) => row.kind === 'reference' && row.surface).map((row) => row.surface))
+          const withVerdict = scored.map((row) => {
+            if (!row.surface) return row
+            const verdict = profileKey === 'none' ? null : surfaceVerdict(row.surface, profileKey)
+            return {
+              ...row,
+              pass: verdict ? verdict.pass : null,
+              failed_axes: verdict ? verdict.failed : [],
+              surface_similarity: surfaceSimilarity(refSurface, row.surface),
+            }
+          })
+          const measured = withVerdict.filter((row) => row.kind === 'image' && row.surface)
+          const aggregate = meanSurface(measured.map((row) => row.surface))
+          const aggregateVerdict = aggregate && profileKey !== 'none' ? surfaceVerdict(aggregate, profileKey) : null
+          return toLossless({
+            method: 'surface-finish axes (specular hardness, sheen coverage, specular size, edge softness, micro-contrast, black lift, chroma, matte composite)',
+            profile: profileKey === 'none' ? 'none' : {
+              key: profileKey,
+              label: SURFACE_PROFILES[profileKey].label,
+              summary: SURFACE_PROFILES[profileKey].summary,
+              gates: SURFACE_PROFILES[profileKey].gates,
+            },
+            axes: SURFACE_AXES.map((axis) => ({ key: axis.key, zh: axis.zh, meaning: axis.desc })),
+            reference_surface: refSurface,
+            aggregate: aggregate ? {
+              ...aggregate,
+              pass: aggregateVerdict ? aggregateVerdict.pass : null,
+              failed_axes: aggregateVerdict ? aggregateVerdict.failed : [],
+              images: measured.length,
+              caution: 'Per-image spread can reach ~40 points; judge an artist on 3+ same-subject images, not one.',
+            } : null,
+            images: withVerdict,
+            note: 'High matte = matte thick painting / oily finish; low matte = glossy cel shading. specHard is the axis that matters most when the complaint is "hard white speculars": it is the gradient strength at specular patch boundaries, so a dissolved oily sheen scores low even when the skin is very bright, while crisp white highlights score high.',
+          })
+        } finally {
+          try {
+            fs.rmSync(tmpDir, { recursive: true, force: true })
+          } catch {
+            // Temp files only; cleanup failure must not fail the tool.
+          }
+        }
+      },
+    },
 
     {
       name: 'danbooru_search_posts',
@@ -3168,6 +3587,7 @@ export function apply(ctx, rawConfig = {}) {
     'danbooru_similar_artists',
     'danbooru_artists_from_image',
     'danbooru_pixel_style_match',
+    'danbooru_surface_profile',
     'danbooru_auth_status',
     'danbooru_save_credentials',
   ])
@@ -3182,4 +3602,4 @@ export function apply(ctx, rawConfig = {}) {
 }
 
 /** Test seam: lets verify.mjs exercise the client without mounting the plugin. */
-export const __internals = { createClient, normalizeConfig, mapPost, httpMessage, formatWeightedTag }
+export const __internals = { createClient, normalizeConfig, mapPost, httpMessage, formatWeightedTag, joinArtistString }

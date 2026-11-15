@@ -8,18 +8,60 @@
 
 它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
 
-## 当前能力一览（默认 11 个核心工具；`toolPreset="full"` 时 15 个）
+## 当前能力一览（默认 12 个核心工具；`toolPreset="full"` 时 16 个）
 
 - **检索**：`search_posts`（年份/评级/Hot/score）、`search_tags`、`get_tag`（wiki + 别名）、`related_tags`
 - **画师发现**：`top_artists`（HOT/周榜/参考权重三级采样）、`year_artists`（整年总收藏 + 体型 tag 闸门 + 肤色/肤质 + 整体色调参考）、`similar_artists`（tag 画像 + 表情画像余弦）
 - **以图搜画师**：`artists_from_image`（分层 tag 加权；角色身份/装饰特征自动剔除；单维度命中降权；同源变体聚簇去重；并直接产出**六槽画师串 `artist_string`**）
 - **整体画风匹配**：`style_match`（画风优先；身份外貌 tag 剔除、`body_tags` 作次级证据；小体量画师共现发现 + `seed_artists` 点名加回 + 持久拒绝记忆；可选角色模式）
-- **像素相似匹配**：`pixel_style_match`（给参考图 → 下载候选样图 → 本地 Pillow 描述子做图对图排序；身份/外貌 tag 完全不参与，专治「白毛图→白毛画师」）
+- **像素相似匹配**：`pixel_style_match`（给参考图 → 下载候选样图 → 本地 Pillow 描述子做图对图排序；身份/外貌 tag 完全不参与，专治「白毛图→白毛画师」；每个候选另带 `matte` / `surface` / `surface_similarity`，`surface_gate="matte_thick"` 可把硬高光画师挡掉）
+- **表面质感判定**：`surface_profile`（雾面厚涂/油腻 vs 亮面赛璐璐/镜面，8 轴打分 + 闸门判定；详见下节）
 （**full 模式工具**，默认不注册）- **多方案共识**：`image_artist_consensus`（多份候选名单交集，过滤单方案误判）
 （**full 模式工具**，默认不注册）- **部位特化**：`part_specialists`（按部位焦点 tag 的高收藏作品给画师排名）
 - **凭据**：`auth_status` / `save_credentials`（保存登录凭据解除匿名 tag 数限制）
 
 检索是 tag 频率/收藏数的启发式，不是视觉 embedding；所有画师名单最终都要 `read_image` 目视核对。
+
+## 表面质感判据：雾面厚涂（油腻） vs 亮面赛璐璐（镜面）
+
+**为什么需要它**：tag 共现没有「表面质感」通道，像素风格描述子也分不出这两种观感——雾面厚涂半身和亮面赛璐璐半身，风格相似度都能打到 95 左右（两者都「平滑、低饱和」）。真实案例：同一角色两张 NAI V5 图，描述子给 96.4 / 95.5，但一张是油膜感厚涂、一张是硬白高光赛璐璐。判据只能来自**高光边缘硬度、高光面积、微反差、色度、暗部抬升**。
+
+`surface_profile` 对每张图输出 8 个 0–100 轴：
+
+| 轴 | 含义 | 雾面厚涂 | 亮面赛璐璐 |
+|---|---|---|---|
+| `specHard` 高光硬度 | 高光斑**边界**的梯度强度 | 低（>40 不合格） | 高（45+） |
+| `sheen` 柔光覆盖 | 皮肤大面积亮部占比（「腻」的真正来源） | 高（100） | 低 |
+| `specSize` 高光尺度 | 高光斑中位面积 | 大片油光 | 碎白点 |
+| `edgeSoft` 边缘软化 | 平均梯度/峰值梯度 | 过渡绵长 | 硬边分界 |
+| `contrast` 微对比 | 皮肤区局部标准差 | 低（≤28） | 高（30+） |
+| `blackLift` 暗部抬升 | 皮肤暗部亮度 | 高（≥60，暗部发灰） | 偏低 |
+| `chroma` 色度 | 皮肤平均饱和度 | 低（≤35，灰调） | 高（45+，高纯肉色） |
+| `matte` 雾面度 | 综合分 | ≥65 | ≤55 |
+
+标定实例（同一角色、同一模型）：
+
+| | specHard | sheen | contrast | chroma | matte |
+|---|---|---|---|---|---|
+| 雾面厚涂（目标） | 23.0 | 100 | 15.8 | 16.9 | **73.2** |
+| 亮面赛璐璐（失败） | 56.5 | 67.4 | 37.7 | 60.7 | **52.1** |
+
+前者通过 `matte_thick` 全部 6 条闸门，后者挂 5 条。
+
+**用法**：
+
+```text
+# 单个画师筛样（建议同题材 ≥3 张，单张方差可达 ±40）
+danbooru_surface_profile(images="a.jpg, b.jpg, c.jpg", profile="matte_thick")
+
+# 拿自己的成品和参考图比表面质感
+danbooru_surface_profile(images="out.png", reference="ref.webp", profile="matte_thick")
+
+# 在像素匹配里直接挡住硬高光画师
+danbooru_pixel_style_match(reference_images="ref.webp", surface_gate="matte_thick")
+```
+
+**判读规则**：`matte_thick` 通过 = 该画师/该图属于雾面厚涂一侧，可以进雾面串；`specHard` 单项超标即「硬白高光」，是这类串最容易翻车的来源。需要亮面时改用 `gloss_cel`。单张图不能定论，取 3 张以上看中位数。
 
 ## 宇宙免责声明（Cosmic Disclaimer）
 
@@ -86,12 +128,12 @@
 
 ## 工具集：core（默认）与 full（0.30.0 起）
 
-插件默认只注册**最近会话日志里真正被调用过**的 11 个核心工具，低频工具移出默认注册，减少工具列表噪音（DSH 每次会把已注册工具的 schema 放进上下文）：
+插件默认只注册**最近会话日志里真正被调用过**的 12 个核心工具，低频工具移出默认注册，减少工具列表噪音（DSH 每次会把已注册工具的 schema 放进上下文）：
 
 | 预设 | 工具数 | 工具 |
 |---|---|---|
-| `core`（默认） | 11 | `search_posts`、`search_tags`、`get_tag`、`related_tags`、`year_artists`、`style_match`、`similar_artists`、`artists_from_image`、`pixel_style_match`、`auth_status`、`save_credentials` |
-| `full` | 15 | core + `top_artists`、`part_specialists`、`image_artist_consensus`、`get_post` |
+| `core`（默认） | 12 | `search_posts`、`search_tags`、`get_tag`、`related_tags`、`year_artists`、`style_match`、`similar_artists`、`artists_from_image`、`pixel_style_match`、`surface_profile`、`auth_status`、`save_credentials` |
+| `full` | 16 | core + `top_artists`、`part_specialists`、`image_artist_consensus`、`get_post` |
 
 切换方式（任选其一）：
 
@@ -103,7 +145,7 @@
 
 ## 工具
 
-> 下表列全部 15 个工具；`core` 默认注册其中 11 个，带「full 模式」标注的 4 个需切换预设。
+> 下表列全部 16 个工具；`core` 默认注册其中 12 个，带「full 模式」标注的 4 个需切换预设。
 
 | 工具 | 作用 | 主要参数 |
 |---|---|---|
@@ -117,6 +159,7 @@
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`allow_rejected_artists`、`forget_artists`、`clear_rejections`、`anchor_pages`、`deep_scan_pages`、`pair_pages`、`cooccurrence_limit`、`cooccurrence_tags`、`subject_tags`(body_tags 的兼容别名) |
 | `danbooru_pixel_style_match` | **像素相似匹配（0.29.0，推荐用于以图找画师）**：给参考图（URL 或本地路径），插件用 tag 通道只**提名**候选画师，然后下载候选 1–3 张样图，用本地 Pillow 描述子（线条/边缘统计、明暗平滑度、色彩丰富度、饱和度、色相直方图）做**图对图**距离排序。身份/外貌 tag（发色、瞳色、服装、角色）完全不参与评分，避免「白毛图就找白毛画师」；并逐画师比较指定年份（默认去年 + 前年）的作品，在画师后面标出更贴近参考图的年份，如 `hews 2024 2025`。需要 Python+Pillow（DSH 自带，可用 `DSH_PYTHON` 覆盖） | `reference_images`(必填)、`candidate_artists`、`style_tags`、`body_tags`、`genre_tags`、`pool_pages`、`cooccurrence_limit`、`pool_size`、`samples_per_artist`、`limit`、`rating`、`allow_rejected_artists` |
+| `danbooru_surface_profile` | **表面质感判定**：8 轴打分（`specHard` 镜面边缘硬度 / `sheen` 油亮覆盖率 / `specSize` 高光斑块大小 / `edgeSoft` 边缘softness / `contrast` 微对比 / `blackLift` 黑位抬升 / `chroma` 皮肤彩度 / `matte` 哑光综合），判断「雾面厚涂/油腻」vs「亮面赛璐璐/镜面」；`profile="matte_thick"` 或 `"gloss_cel"` 做闸门，`reference=` 可带参考图算 `surface_similarity`。像素风格相似度无法区分这两种质感（都约 95），需要它单独筛 | `images`(必填)、`profile`、`reference` |
 | `danbooru_image_artist_consensus` | （full 模式）**多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | （full 模式）**部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | （full 模式）单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
@@ -286,7 +329,8 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - **每个维度独立成榜（`aspect_leaders`）**：`person`/`technique`/`lineart`/`clothing`/`expression`/`color`/`lighting`/`tag` 各排一个榜首；榜首即使全局排名掉出 `limit` 也照样进槽位池，**不因为「整图像不像」被截掉**
 - **没进槽的榜首不删，进 `try_next`**：建议权重 0.15 并注明「它是某方面的最大贡献者」，让调用方**先加进串里比一比**再决定去留——某个方面最强的画师，往往就是最不可替代的那一块
 - **权重看画面占比**，不是画师强弱：所以主槽固定 0.8
-- **权重为 1 的 tag 不再包 `::`**（0.33.0 起统一由 `formatWeightedTag` 处理）：例如 `artist_soup` 的 1.0 anchor 直接写 `hews`，而不是 `1.0::hews::`；其余权重仍保留 `0.85::name::` 形式，名字以数字结尾时补空格再 `::`5、点缀固定 0.20；要调就改权重，不要再往串里叠画师
+- **权重为 1 的 tag 不再包 `::`**（0.33.0 起统一由 `formatWeightedTag` 处理）：例如 `artist_soup` 的 1.0 anchor 直接写 `hews`，而不是 `1.0::hews::`；其余权重仍保留 `0.85::name::` 形式，名字以数字结尾时补空格再 `::`
+- **tag 以数字结尾时，逗号前自动补空格**（0.35.0 起统一由 `joinArtistString` 处理）：`hews 2024 , hews 2025 , ...`，避免 NAI tokenizer 把数字和 `,` 粘成一个 token；六槽 `artist_string`、`artist_soup`、像素匹配的 `artist_string` 都生效5、点缀固定 0.20；要调就改权重，不要再往串里叠画师
 - `string_style="artist_prefix"` 输出 `0.85::artist:name::`；`string_slots` 控制填几个槽（默认 6）
 - 名字里的括号自动转义为 `\(` `\)`，可以直接粘进 NAI
 
@@ -481,7 +525,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.34.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.36.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -519,7 +563,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 82 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 83 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -540,6 +584,8 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.36.0**：新增 **`danbooru_surface_profile`（表面质感判定）**——8 轴打分区分「雾面厚涂/油腻」与「亮面赛璐璐/镜面」，`profile` 可做闸门、`reference` 算 `surface_similarity`；`danbooru_pixel_style_match` 每个候选附带 `matte` / `surface` / `surface_similarity` 并支持 `surface_gate="matte_thick"|"gloss_cel"`；同时**画师串分隔符修正**——tag 以数字结尾时逗号前自动补空格（`hews 2024 , hews 2025 , ...`），六槽 `artist_string`、`artist_soup`、像素 `artist_string` 全部生效；`verify.mjs` 增加分隔符自检（共 83 项）
+- **0.35.0**：画师串分隔符修正——**tag 以数字结尾时，逗号前自动补一个空格**（`hews 2024 , hews 2025 , ...`），避免 NAI tokenizer 把数字与 `,` 粘成一个 token；统一由 `joinArtistString` 处理，六槽 `artist_string`、`artist_soup`、像素匹配 `artist_string` 全部生效；`verify.mjs` 增加分隔符自检（共 83 项）
 - **0.34.0**：`danbooru_artists_from_image` 修正「全局排名截断会剔除单方面专精画师」——新增**逐维度榜首榜 `aspect_leaders`**（`person` / `expression` / `technique` / `lineart` / `clothing` / `color` / `lighting` / `tag` 各一名，带 `evidence` / `global_rank` / `in_string`）：某个方面最强的画师即便全局排名掉出 `limit`，也照样进入槽位池；没抢到槽位的榜首**不删除**，改为进入 **`try_next`**（建议权重 0.15 + 理由「它是某方面的最大贡献者，先加再比」）；`artist_string_slots` 增加 `from_aspect_leader` 标记。实测 `limit=5` 时，原本会被截掉的 `tayuido`（全局第 9）、`mdf_an`（16）、`optionaltypo`（22）、`valtor`（**133**）里，3 位直接拿到槽位、1 位进入 `try_next`；`verify.mjs` 增加 4 项自检（现共 81 项 `check()`）；同时补齐参考图下载：`danbooru_pixel_style_match` 的 `reference_images` 现在接受**直接图片 URL / D 站帖子 URL（/posts/<id>，经 API 解析）/ 本地文件路径**，下载带 UA+Referer（CDN 防盗链），非图片响应与视频帖子给出明确错误，`verify.mjs` 增加帖子 URL 参考图自检（共 82 项）
 - **0.33.0**：`danbooru_style_match` 新增**成品画师串 `artist_soup`**（并加入本轮改动：**权重为 1 的 tag 裸输出，不再被 `::` 权重框包裹**——`artist_soup` 的 1.0 anchor 直接是 `hews`；`buildArtistString` / `naiWeightedName` 统一走 `formatWeightedTag`，权重 1 判定支持 `1` 与 `1.0`），——按 `1.0 / 0.85 / 0.6 / 0.5 / 0.4 / 0.3 / 0.2` 的权重形状（最多 7 位、`top3_share` 约 0.65~0.70）把最终候选拼成可直接粘贴的 NAI 串，输出 `string` / `artists[]` / `total_weight` / `top3_share`；两条 NAI 书写规则内置：**权重 1 不加 `::` 框**、**名字以数字结尾时在 `::` 前补空格**。该形状来自 2026-11-15 的实测回归：没有 1.0 锚的串会向「所有人的平均」漂移，而 ≤0.3 的长尾（0.24 / 0.16 / 0.12）只增加噪声；**删掉排第一的名字来「清理」画师串会让画面明显跑偏**
 - **0.32.0**：`danbooru_artists_from_image`（以图找画师）的交付物改为**画师串**——新增「六槽职责构成」（`body` 0.85 / `skin` 0.60 / `brush` 0.50 / `material` 0.40 / `accent` 0.20 / `theme` 0.30），一槽一位画师、同一位不重复占槽，权重按「该职责在画面里的占比」而不是检索分或画师名气给；输出 `artist_string`（NAI 语法，括号自动转义）与 `artist_string_slots`（每槽命中的维度证据），新增 `string_style`（`plain` / `artist_prefix`）与 `string_slots`；空槽跳过不凑数；`verify.mjs` 增加 4 项自检（脚本现共 77 项 `check()`）

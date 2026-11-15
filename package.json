@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.34.0",
+  "version": "0.36.0",
   "private": true,
   "type": "module",
-  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools. Default (core) preset registers the 11 most-used tools: post/tag search, tag details, related tags, year-favorites artist ranking, tag-based style matching, similar artists, image-to-artist search, pixel-similarity style matching (with per-artist closest-year annotation), credentials. toolPreset=\"full\" (or DANBOORU_TOOL_PRESET=full) adds the four rarely used extras: weighted Hot/rising artist ranking, part specialists, multi-scheme consensus and single-post lookup. NAI prompt strings emit weight-1 tags bare (no :: wrapper). Image-to-artist keeps a leader board per dimension, so a one-aspect specialist still reaches the artist string (or the try_next queue) instead of being cut by the whole-image ranking.",
+  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools. Default (core) preset registers the 12 most-used tools: post/tag search, tag details, related tags, year-favorites artist ranking, tag-based style matching, similar artists, image-to-artist search, pixel-similarity style matching (with per-artist closest-year annotation), surface-finish profiling (matte thick painting vs glossy cel), credentials. toolPreset=\"full\" (or DANBOORU_TOOL_PRESET=full) adds the four rarely used extras: weighted Hot/rising artist ranking, part specialists, multi-scheme consensus and single-post lookup. NAI prompt strings emit weight-1 tags bare (no :: wrapper) and put a space before the comma after a digit-ending tag (\"hews 2024 , ...\"). Surface profile tool scores matte thick painting vs glossy cel shading on eight axes. Image-to-artist keeps a leader board per dimension, so a one-aspect specialist still reaches the artist string (or the try_next queue) instead of being cut by the whole-image ranking. Every pixel/surface score also reports a matte composite: the edge descriptor alone cannot tell matte thick painting from glossy cel shading (both score ~95), so surface_gate=\"matte_thick\" is the switch that keeps hard-specular artists out of a matte reference.",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

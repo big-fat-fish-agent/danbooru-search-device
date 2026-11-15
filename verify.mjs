@@ -40,7 +40,7 @@ function check(label, condition, detail) {
   }
 }
 
-check('full preset registers fifteen tools', registered.size === 15, `registered=${[...registered.keys()].join(', ')}`)
+check('full preset registers sixteen tools', registered.size === 16, `registered=${[...registered.keys()].join(', ')}`)
 
 const coreRegistered = new Map()
 const coreCtx = {
@@ -57,7 +57,7 @@ const coreCtx = {
 }
 apply(coreCtx, { contact: 'self-check-core' })
 const coreNames = [...coreRegistered.keys()]
-check('default preset registers eleven core tools', coreNames.length === 11 && !coreNames.includes('danbooru_image_artist_consensus') && !coreNames.includes('danbooru_part_specialists') && !coreNames.includes('danbooru_top_artists') && !coreNames.includes('danbooru_get_post'), `registered=${coreNames.join(', ')}`)
+check('default preset registers twelve core tools', coreNames.length === 12 && coreNames.includes('danbooru_surface_profile') && !coreNames.includes('danbooru_image_artist_consensus') && !coreNames.includes('danbooru_part_specialists') && !coreNames.includes('danbooru_top_artists') && !coreNames.includes('danbooru_get_post'), `registered=${coreNames.join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false
@@ -132,8 +132,9 @@ check('unfitted aspect leaders are suggested with a low weight instead of droppe
 check('slots mark whether the artist came from an aspect leader board', imageArtists.artist_string_slots.every((slot) => typeof slot.from_aspect_leader === 'boolean'), JSON.stringify(imageArtists.artist_string_slots.map((slot) => [slot.slot, slot.artist, slot.from_aspect_leader])))
 
 // Weight-1 tags must be emitted bare (no `::` wrapper); other weights keep the w::tag:: form.
-const { formatWeightedTag } = __internals
+const { formatWeightedTag, joinArtistString } = __internals
 check('unit-weight tags are emitted without the :: wrapper', formatWeightedTag('hews 2024 2025', 1) === 'hews 2024 2025' && formatWeightedTag('hews', 1.0) === 'hews' && formatWeightedTag('artist:hews 2025', 1) === 'artist:hews 2025' && formatWeightedTag('hews', 0.85) === '0.85::hews::' && formatWeightedTag('hews 2024', 0.5) === '0.5::hews 2024 ::' && formatWeightedTag('artist2', 0.85) === '0.85::artist2 ::', JSON.stringify([formatWeightedTag('hews', 1), formatWeightedTag('hews', 0.85), formatWeightedTag('artist2', 0.85), formatWeightedTag('hews 2024', 0.5)]))
+check('artist strings put a space before the comma after a digit-ending tag', joinArtistString(['hews 2024', 'hews 2025', 'hew2', '0.85::hew2 ::', 'elocca']) === 'hews 2024 , hews 2025 , hew2 , 0.85::hew2 ::, elocca' && joinArtistString(['a2', 'b2']) === 'a2 , b2' && joinArtistString(['hews 2024']) === 'hews 2024', JSON.stringify([joinArtistString(['hews 2024', 'hews 2025', 'hew2', '0.85::hew2 ::', 'elocca']), joinArtistString(['a2', 'b2']), joinArtistString(['hews 2024'])]))
 
 const consensus = await call('danbooru_image_artist_consensus', { lists: JSON.stringify(['hews,nyantcha,tayuido', 'nyantcha,shexyo', 'hews,asou']), source_names: 'a,b,c', min_hits: 2, limit: 5, examples: 0 })
 check('consensus keeps artists found by at least two schemes', consensus.candidates.map((candidate) => candidate.name).sort().join(',') === 'hews,nyantcha' && consensus.candidates.every((candidate) => candidate.hits >= 2) && consensus.fallback_used === false, JSON.stringify(consensus.candidates.map((candidate) => [candidate.name, candidate.hits])))
