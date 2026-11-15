@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "private": true,
   "type": "module",
-  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools. Default (core) preset registers the 11 most-used tools: post/tag search, tag details, related tags, year-favorites artist ranking, tag-based style matching, similar artists, image-to-artist search, pixel-similarity style matching, credentials. toolPreset=\"full\" (or DANBOORU_TOOL_PRESET=full) adds the four rarely used extras: weighted Hot/rising artist ranking, part specialists, multi-scheme consensus and single-post lookup.",
+  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools. Default (core) preset registers the 11 most-used tools: post/tag search, tag details, related tags, year-favorites artist ranking, tag-based style matching, similar artists, image-to-artist search, pixel-similarity style matching (with per-artist closest-year annotation), credentials. toolPreset=\"full\" (or DANBOORU_TOOL_PRESET=full) adds the four rarely used extras: weighted Hot/rising artist ranking, part specialists, multi-scheme consensus and single-post lookup.",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

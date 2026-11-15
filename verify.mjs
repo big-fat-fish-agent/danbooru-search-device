@@ -198,6 +198,17 @@ const pixelMatch = await call('danbooru_pixel_style_match', {
 })
 check('pixel match ranks artists by visual similarity', pixelMatch.candidates.length > 0 && pixelMatch.candidates.every((candidate) => typeof candidate.similarity === 'number' && candidate.samples.length > 0) && pixelMatch.candidates.every((candidate, index, all) => index === 0 || all[index - 1].similarity >= candidate.similarity), JSON.stringify(pixelMatch.candidates?.map((candidate) => [candidate.name, candidate.similarity])))
 
+const pixelYear = await call('danbooru_pixel_style_match', {
+  reference_images: 'https://cdn.donmai.us/sample/fe/8c/sample-fe8ce3a3785d35e161074779a433c0e2.jpg',
+  candidate_artists: 'hews',
+  limit: 1,
+  samples_per_artist: 1,
+  years: '2025',
+  year_samples: 1,
+})
+const pixelYearCandidate = pixelYear.candidates?.[0]
+check('pixel match annotates the closest year', Boolean(pixelYearCandidate) && Array.isArray(pixelYearCandidate.years) && typeof pixelYearCandidate.artist_with_years === 'string' && pixelYearCandidate.artist_with_years.startsWith('hews') && (pixelYearCandidate.years.length === 0 || pixelYearCandidate.artist_with_years.endsWith(String(pixelYearCandidate.years[0]))) && typeof pixelYear.artist_string === 'string' && pixelYear.artist_string.includes('hews'), JSON.stringify({ years: pixelYearCandidate?.years, artist_with_years: pixelYearCandidate?.artist_with_years, artist_string: pixelYear.artist_string }))
+
 // Rejection memory: remembered rejects are filtered from AUTOMATIC discovery, but explicitly
 // naming one again (seed_artists) reinstates it — the memory is not a permanent block.
 await call('danbooru_style_match', { style_tags: 'shiny_skin', avoid_artists: 'hews', limit: 3, examples: 0, verify_same_character: false })

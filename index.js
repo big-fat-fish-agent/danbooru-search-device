@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.30.0'
+const VERSION = '0.31.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -816,6 +816,10 @@ export function apply(ctx, rawConfig = {}) {
       cooccurrence_limit: { type: 'integer', minimum: 50, maximum: 200, description: 'Artists pulled from the related_tag co-occurrence pass per style tag (default 200 = API max). Used for pool seeding only.' },
       pool_size: { type: 'integer', minimum: 1, maximum: 48, description: 'Candidate artists to compare pixel-wise (default max(limit*3, 12)). Each costs one posts request plus 1-3 image downloads.' },
       samples_per_artist: { type: 'integer', minimum: 1, maximum: 3, description: 'Sample images per artist (default 2). More samples = more downloads but a fairer judgement of the artist\'s range.' },
+      year_check: { type: 'boolean', description: 'Annotate each returned artist with the years whose works look closest to the reference (default true). Each artist-year costs one posts request plus 1-3 image downloads.' },
+      years: { type: 'string', description: 'Comma-separated years to compare per artist, defaulting to last year and the year before (e.g. "2025,2024"). Up to 4 years; each candidate is annotated with the closest one(s), e.g. "hews 2024 2025".' },
+      year_samples: { type: 'integer', minimum: 1, maximum: 3, description: 'Sample posts per artist per year for the year-fit comparison (default 2).' },
+      year_tolerance: { type: 'number', minimum: 0, maximum: 30, description: 'How many similarity points a year may trail the artist\'s best year and still count as a close fit (default 5). Both years are listed when both are within tolerance.' },
       limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 8).' },
       rating: { type: 'string', enum: ['g', 's', 'q', 'e', 'all'], description: 'Rating filter for sample posts (default all, R18 included).' },
       allow_rejected_artists: { type: 'boolean', description: 'Ignore the remembered rejection list for this call only. Rejected artists are otherwise filtered from the result like the other artist tools.' },
@@ -837,6 +841,16 @@ export function apply(ctx, rawConfig = {}) {
       const explicitArtists = [...new Set(parseTagList(args?.candidate_artists).map(keyOf).filter(Boolean))]
       const rating = ['g', 's', 'q', 'e'].includes(args?.rating) ? args.rating : 'all'
       const allowRejected = args?.allow_rejected_artists === true
+      const yearCheck = args?.year_check !== false
+      const currentYear = new Date().getFullYear()
+      const requestedYears = (() => {
+        const raw = String(args?.years ?? '').split(/\s*,\s*/).map((value) => Number(value)).filter((value) => Number.isFinite(value))
+        const list = raw.length > 0 ? raw : [currentYear - 1, currentYear - 2]
+        return [...new Set(list.map((value) => Math.trunc(value)).filter((value) => value >= 2005 && value <= currentYear + 1))].slice(0, 4)
+      })()
+      const yearSamples = clamp(args?.year_samples, 1, 3, 2)
+      const yearTolerance = clamp(args?.year_tolerance, 0, 30, 5)
+      const dateTagFor = (year) => `date:${year}-01-01..${year}-12-31`
 
       // 1) Candidate pool. Tag channels only nominate artists; they never rank them.
       const poolScore = new Map()
@@ -976,6 +990,79 @@ export function apply(ctx, rawConfig = {}) {
           })
           .sort((left, right) => right.similarity - left.similarity || left.name.localeCompare(right.name))
         const filtered = filterRejectedArtists(candidates)
+        const kept = filtered.kept.slice(0, limit)
+
+        // Year fit: for each returned artist, compare their works from each requested year against
+        // the reference images and annotate the artist with the year(s) whose look is closest.
+        // "hews 2024 2025" means both years are within year_tolerance of the artist's best year.
+        const yearReport = { enabled: yearCheck && requestedYears.length > 0, years: requestedYears, samples_per_year: yearSamples, tolerance: yearTolerance }
+        if (yearReport.enabled) {
+          const yearEntries = []
+          for (const candidate of kept) {
+            for (const year of requestedYears) {
+              let rows = []
+              try {
+                rows = await request('/posts.json', { tags: `${candidate.name} ${dateTagFor(year)}`, limit: Math.min(100, yearSamples * 4) }, { signal: exec?.signal, ttlMs: TTL.posts })
+              } catch {
+                rows = []
+              }
+              const posts = dedupeByCluster((Array.isArray(rows) ? rows : [])
+                .filter((post) => !isVideoPost(post) && (post.large_file_url || post.file_url || post.preview_file_url))
+                .filter((post) => rating === 'all' || post.rating === rating)
+                .map((post) => ({ post }))).slice(0, yearSamples)
+              for (const row of posts) {
+                yearEntries.push({
+                  candidate,
+                  year,
+                  post: row.post,
+                  url: row.post.large_file_url ?? row.post.file_url ?? row.post.preview_file_url,
+                })
+              }
+            }
+          }
+          const yearFiles = await mapWithConcurrency(yearEntries, 6, async (entry, index) => {
+            try {
+              return await fetchPixelImage(entry.url, tmpDir, `y${index}`)
+            } catch (error) {
+              return { error: error.message, path: null }
+            }
+          })
+          const yearDownloadable = yearFiles.filter((file) => file.path)
+          const yearFeatureRows = yearDownloadable.length > 0 ? await computePixelFeatures(yearDownloadable.map((file) => file.path)) : []
+          const yearFeatureByPath = new Map(yearDownloadable.map((file, index) => [file.path, yearFeatureRows[index]]))
+          const byCandidateYear = new Map()
+          yearEntries.forEach((entry, index) => {
+            const vector = yearFiles[index]?.path ? yearFeatureByPath.get(yearFiles[index].path) : null
+            if (!Array.isArray(vector)) return
+            const similarity = round((1 - Math.min(1, Math.min(...refFeatures.map((ref) => pixelDistance(ref, vector))))) * 100, 1)
+            const key = `${entry.candidate.name}|${entry.year}`
+            const list = byCandidateYear.get(key) ?? []
+            list.push({ post_id: entry.post.id, post_url: `${ORIGIN}/posts/${entry.post.id}`, sample_url: entry.url, similarity })
+            byCandidateYear.set(key, list)
+          })
+          for (const candidate of kept) {
+            const yearFit = {}
+            for (const year of requestedYears) {
+              const samples = (byCandidateYear.get(`${candidate.name}|${year}`) ?? []).sort((left, right) => right.similarity - left.similarity)
+              yearFit[String(year)] = samples.length > 0 ? { similarity: samples[0].similarity, samples: samples.slice(0, yearSamples) } : { available: false }
+            }
+            const available = requestedYears
+              .map((year) => ({ year, similarity: yearFit[String(year)]?.similarity }))
+              .filter((row) => typeof row.similarity === 'number')
+            const best = available.length > 0 ? Math.max(...available.map((row) => row.similarity)) : null
+            const closeYears = best == null ? [] : available.filter((row) => row.similarity >= best - yearTolerance).map((row) => row.year).sort((left, right) => left - right)
+            candidate.year_fit = yearFit
+            candidate.years = closeYears
+            candidate.artist_with_years = [candidate.name, ...closeYears].join(' ')
+          }
+        } else {
+          for (const candidate of kept) {
+            candidate.years = []
+            candidate.artist_with_years = candidate.name
+          }
+        }
+        const artistString = kept.map((candidate) => candidate.artist_with_years).join(', ')
+
         return toLossless({
           method: 'pixel style descriptor (edge/line statistics, shading smoothness, colourfulness, saturation, hue histogram)',
           reference_images: refs.length,
@@ -985,9 +1072,11 @@ export function apply(ctx, rawConfig = {}) {
             artists_in_pool: artistPool.length,
             samples_downloaded: sampleResults.length,
           },
-          candidates: filtered.kept.slice(0, limit),
+          artist_string: artistString,
+          year_check: yearReport,
+          candidates: kept,
           rejected_excluded: filtered.excluded,
-          note: 'Ranking is image-to-image so identity tags (hair colour, eyes, costume, character) cannot drive it; tag channels only nominate the candidate pool. The descriptor compares line/edge texture, shading smoothness, colourfulness, saturation and hue distribution — it is a heuristic, not a neural embedding: confirm the top artists visually. Requires Python+Pillow (DSH_PYTHON overrides discovery).',
+          note: 'Ranking is image-to-image so identity tags (hair colour, eyes, costume, character) cannot drive it; tag channels only nominate the candidate pool. artist_with_years appends the year(s) whose works are closest to the reference ("hews 2024 2025" = both years are within year_tolerance of the artist\'s best year); artist_string carries those annotations for the whole list. The descriptor compares line/edge texture, shading smoothness, colourfulness, saturation and hue distribution — a heuristic, not a neural embedding: confirm the top artists visually. Requires Python+Pillow (DSH_PYTHON overrides discovery).',
         })
       } finally {
         try {
