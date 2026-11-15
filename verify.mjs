@@ -5,7 +5,7 @@
  * Run with: node verify.mjs
  * It is read-only and only touches danbooru.donmai.us.
  */
-import { apply } from './index.js'
+import { apply, __internals } from './index.js'
 
 const registered = new Map()
 const ctx = {
@@ -117,6 +117,24 @@ const materialArtists = await call('danbooru_artists_from_image', { image_tags: 
 check('clothing dimension measures material effect, not garment type', materialArtists.excluded_identity_tags.includes('lingerie') && materialArtists.groups.some((group) => group.key === 'clothing' && group.tags.some((tag) => tag.tag === 'latex')) && materialArtists.groups.every((group) => group.tags.every((tag) => tag.tag !== 'lingerie')), JSON.stringify(materialArtists.excluded_identity_tags))
 check('image search demotes single-dimension evidence', imageArtists.candidates.every((candidate) => typeof candidate.dimensions_used === 'number' && candidate.dimensions_used >= 1 && typeof candidate.single_dimension === 'boolean') && imageArtists.candidates.some((candidate) => candidate.single_dimension === false), JSON.stringify(imageArtists.candidates.map((candidate) => [candidate.name, candidate.dimensions_used, candidate.single_dimension])))
 
+// "以图找画师" 的交付物是画师串：六槽构成，槽位顺序固定，同一位画师不重复占槽。
+check('image search emits a six-slot artist string', typeof imageArtists.artist_string === 'string' && /^0\.85::/.test(imageArtists.artist_string) && Array.isArray(imageArtists.artist_string_slots) && imageArtists.artist_string_slots.length >= 1 && imageArtists.artist_string_slots[0].slot === 'body' && imageArtists.artist_string_slots.every((slot) => typeof slot.weight === 'number' && typeof slot.artist === 'string' && Array.isArray(slot.matched_dimensions) && slot.matched_dimensions.length > 0), JSON.stringify(imageArtists.artist_string))
+check('artist string slots use distinct artists and fixed role keys', imageArtists.artist_string_slots.every((slot, index, array) => index === 0 || array[index - 1].slot !== slot.slot) && new Set(imageArtists.artist_string_slots.map((slot) => slot.artist)).size === imageArtists.artist_string_slots.length && imageArtists.artist_string_slots.every((slot) => ['body', 'skin', 'brush', 'material', 'accent', 'theme'].includes(slot.slot)), JSON.stringify(imageArtists.artist_string_slots.map((slot) => [slot.slot, slot.artist, slot.weight])))
+check('artist string escapes parentheses for NAI weights', !/[^\\]\((?!\\)/.test(imageArtists.artist_string || ''), imageArtists.artist_string)
+
+const prefixedString = await call('danbooru_artists_from_image', { image_tags: 'shiny_skin, sweat', technique_tags: 'shiny_skin', string_style: 'artist_prefix', string_slots: 2, limit: 5 })
+check('artist string supports the artist: prefix form', prefixedString.artist_string === '' || /^\d(\.\d+)?::artist:[^:]+::$/.test(prefixedString.artist_string), JSON.stringify(prefixedString.artist_string))
+
+// 每个维度独立成榜：某一维度最强的画师不能被全局排名截掉；没进槽的进 try_next 提示"先加再比"。
+check('image search reports one aspect leader board', Array.isArray(imageArtists.aspect_leaders) && imageArtists.aspect_leaders.length > 0 && imageArtists.aspect_leaders.length <= imageArtists.groups.length && imageArtists.aspect_leaders.every((leader) => typeof leader.dimension === 'string' && typeof leader.artist === 'string' && leader.evidence > 0 && typeof leader.global_rank === 'number' && leader.global_rank >= 1 && typeof leader.in_string === 'boolean'), JSON.stringify(imageArtists.aspect_leaders))
+check('aspect leaders never vanish: each is in the string, in candidates, or queued in try_next', imageArtists.aspect_leaders.every((leader) => leader.in_string || imageArtists.candidates.some((candidate) => candidate.name === leader.artist) || (imageArtists.try_next || []).some((entry) => entry.artist === leader.artist) || leader.global_rank > 0), JSON.stringify({ leaders: imageArtists.aspect_leaders.map((leader) => [leader.dimension, leader.artist, leader.global_rank, leader.in_string]), tryNext: (imageArtists.try_next || []).map((entry) => entry.artist) }))
+check('unfitted aspect leaders are suggested with a low weight instead of dropped', Array.isArray(imageArtists.try_next) && imageArtists.try_next.every((entry) => entry.suggested_weight > 0 && entry.suggested_weight <= 0.2 && typeof entry.reason === 'string' && entry.reason.length > 20) && ((imageArtists.try_next).length === 0 || imageArtists.try_next.every((entry) => !imageArtists.aspect_leaders.find((leader) => leader.artist === entry.artist)?.in_string)), JSON.stringify(imageArtists.try_next))
+check('slots mark whether the artist came from an aspect leader board', imageArtists.artist_string_slots.every((slot) => typeof slot.from_aspect_leader === 'boolean'), JSON.stringify(imageArtists.artist_string_slots.map((slot) => [slot.slot, slot.artist, slot.from_aspect_leader])))
+
+// Weight-1 tags must be emitted bare (no `::` wrapper); other weights keep the w::tag:: form.
+const { formatWeightedTag } = __internals
+check('unit-weight tags are emitted without the :: wrapper', formatWeightedTag('hews 2024 2025', 1) === 'hews 2024 2025' && formatWeightedTag('hews', 1.0) === 'hews' && formatWeightedTag('artist:hews 2025', 1) === 'artist:hews 2025' && formatWeightedTag('hews', 0.85) === '0.85::hews::' && formatWeightedTag('hews 2024', 0.5) === '0.5::hews 2024 ::' && formatWeightedTag('artist2', 0.85) === '0.85::artist2 ::', JSON.stringify([formatWeightedTag('hews', 1), formatWeightedTag('hews', 0.85), formatWeightedTag('artist2', 0.85), formatWeightedTag('hews 2024', 0.5)]))
+
 const consensus = await call('danbooru_image_artist_consensus', { lists: JSON.stringify(['hews,nyantcha,tayuido', 'nyantcha,shexyo', 'hews,asou']), source_names: 'a,b,c', min_hits: 2, limit: 5, examples: 0 })
 check('consensus keeps artists found by at least two schemes', consensus.candidates.map((candidate) => candidate.name).sort().join(',') === 'hews,nyantcha' && consensus.candidates.every((candidate) => candidate.hits >= 2) && consensus.fallback_used === false, JSON.stringify(consensus.candidates.map((candidate) => [candidate.name, candidate.hits])))
 
@@ -159,6 +177,11 @@ const styleMatchLook = await call('danbooru_style_match', {
 const lookBodyTags = (styleMatchLook.reference.body_tags ?? []).join(',')
 const lookRejected = (styleMatchLook.reference.rejected_body_tags ?? []).map((row) => row.tag).join(',')
 check('style mode rejects identity/appearance but keeps body-detail evidence', styleMatchLook.reference.mode === 'style' && styleMatchLook.reference.characters.length === 0 && /huge_breasts/.test(lookBodyTags) && /dark_nipples/.test(lookBodyTags) && /white_hair/.test(lookRejected) && /blonde_hair/.test(lookRejected) && styleMatchLook.anchor_scans.every((scan) => scan.kind === 'style-top' || scan.kind === 'genre-top' || scan.kind === 'body-top') && styleMatchLook.queries.some((query) => query.kind === 'style+body' && /huge_breasts/.test(String(query.tags))) && styleMatchLook.queries.every((query) => !/white_hair|blonde_hair/.test(String(query.tags))) && styleMatchLook.candidates.every((candidate) => typeof candidate.style_posts === 'number' && candidate.same_character_posts === null), JSON.stringify({ anchors: styleMatchLook.anchor_scans.map((scan) => scan.kind), body: lookBodyTags, rejected: lookRejected, queries: styleMatchLook.queries.map((query) => query.tags) }))
+const lookSoup = styleMatchLook.artist_soup ?? {}
+const soupShape = [1, 0.85, 0.6, 0.5, 0.4, 0.3, 0.2]
+check('style match emits a ready-to-paste artist string', typeof lookSoup.string === 'string' && lookSoup.string.endsWith(',') && Array.isArray(lookSoup.artists) && lookSoup.artists.length >= 1 && lookSoup.artists.length <= 7 && lookSoup.artists.every((row, index) => row.weight === soupShape[index] && typeof row.name === 'string' && row.name.length > 0) && lookSoup.artists.map((row) => row.name).join(',') === styleMatchLook.candidates.slice(0, lookSoup.artists.length).map((candidate) => candidate.name).join(','), JSON.stringify({ string: lookSoup.string, artists: lookSoup.artists }))
+check('artist string keeps the 1.0 anchor bare and never glues a digit to ::', /^[^\d:]/.test(lookSoup.string ?? '') && !/(\d)::[^:]*[0-9]::/.test(lookSoup.string ?? '') && lookSoup.artists.every((row) => row.weight !== 1 || !lookSoup.string.startsWith(`${row.weight}::`)), JSON.stringify({ string: lookSoup.string }))
+check('artist string concentration lands in the tuned band', typeof lookSoup.top3_share === 'number' && (lookSoup.artists.length <= 3 || (lookSoup.top3_share >= 0.4 && lookSoup.top3_share <= 0.9)) && typeof lookSoup.total_weight === 'number' && lookSoup.total_weight > 0, JSON.stringify({ top3_share: lookSoup.top3_share, total_weight: lookSoup.total_weight, artists: lookSoup.artists.length }))
 
 const styleMatchSmall = await call('danbooru_style_match', {
   style_tags: 'shiny_skin',
