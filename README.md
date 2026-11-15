@@ -8,15 +8,15 @@
 
 它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
 
-## 当前能力一览（15 个工具）
+## 当前能力一览（默认 11 个核心工具；`toolPreset="full"` 时 15 个）
 
 - **检索**：`search_posts`（年份/评级/Hot/score）、`search_tags`、`get_tag`（wiki + 别名）、`related_tags`
 - **画师发现**：`top_artists`（HOT/周榜/参考权重三级采样）、`year_artists`（整年总收藏 + 体型 tag 闸门 + 肤色/肤质 + 整体色调参考）、`similar_artists`（tag 画像 + 表情画像余弦）
 - **以图搜画师**：`artists_from_image`（分层 tag 加权；角色身份/装饰特征自动剔除；单维度命中降权；同源变体聚簇去重）
 - **整体画风匹配**：`style_match`（画风优先；身份外貌 tag 剔除、`body_tags` 作次级证据；小体量画师共现发现 + `seed_artists` 点名加回 + 持久拒绝记忆；可选角色模式）
 - **像素相似匹配**：`pixel_style_match`（给参考图 → 下载候选样图 → 本地 Pillow 描述子做图对图排序；身份/外貌 tag 完全不参与，专治「白毛图→白毛画师」）
-- **多方案共识**：`image_artist_consensus`（多份候选名单交集，过滤单方案误判）
-- **部位特化**：`part_specialists`（按部位焦点 tag 的高收藏作品给画师排名）
+（**full 模式工具**，默认不注册）- **多方案共识**：`image_artist_consensus`（多份候选名单交集，过滤单方案误判）
+（**full 模式工具**，默认不注册）- **部位特化**：`part_specialists`（按部位焦点 tag 的高收藏作品给画师排名）
 - **凭据**：`auth_status` / `save_credentials`（保存登录凭据解除匿名 tag 数限制）
 
 检索是 tag 频率/收藏数的启发式，不是视觉 embedding；所有画师名单最终都要 `read_image` 目视核对。
@@ -84,12 +84,31 @@
 
 装好后可选自检：`node verify.mjs`（约 3–5 分钟，真实请求，不写文件）。
 
+## 工具集：core（默认）与 full（0.30.0 起）
+
+插件默认只注册**最近会话日志里真正被调用过**的 11 个核心工具，低频工具移出默认注册，减少工具列表噪音（DSH 每次会把已注册工具的 schema 放进上下文）：
+
+| 预设 | 工具数 | 工具 |
+|---|---|---|
+| `core`（默认） | 11 | `search_posts`、`search_tags`、`get_tag`、`related_tags`、`year_artists`、`style_match`、`similar_artists`、`artists_from_image`、`pixel_style_match`、`auth_status`、`save_credentials` |
+| `full` | 15 | core + `top_artists`、`part_specialists`、`image_artist_consensus`、`get_post` |
+
+切换方式（任选其一）：
+
+- bundle 配置里写 `toolPreset: "full"`
+- 环境变量 `DANBOORU_TOOL_PRESET=full`
+- 想用 `top_artists` / `part_specialists` / 共识 / `get_post` 时再开 full，平时保持 core
+
+说明：`get_post` 在 core 模式下可用 `search_posts(tags="id:<post_id>")` 等价替代；其余三个只在 full 模式注册，代码未删除。
+
 ## 工具
+
+> 下表列全部 15 个工具；`core` 默认注册其中 11 个，带「full 模式」标注的 4 个需切换预设。
 
 | 工具 | 作用 | 主要参数 |
 |---|---|---|
 | `danbooru_search_posts` | 按 tag 搜索作品，返回按分类拆好的 tag 集与图片 URL；可加 `year` 限定年份、`order=score` 按热度 / `order=rank` 按 Hot 排序 | `tags`、`limit`(1–100)、`page`、`rating`、`year`、`order` |
-| `danbooru_top_artists` | **参考权重算法（HOT 优先）**：HOT 区权重 3 → 一周收藏增长权重 2 → 全年新图权重 1 | `year`(必填)、`tags`、`limit`、`sample`、`hot_sample`、`rising_sample`、`rating`、`weighting`、`rank_by`、`include_total` |
+| `danbooru_top_artists` | （full 模式）**参考权重算法（HOT 优先）**：HOT 区权重 3 → 一周收藏增长权重 2 → 全年新图权重 1 | `year`(必填)、`tags`、`limit`、`sample`、`hot_sample`、`rising_sample`、`rating`、`weighting`、`rank_by`、`include_total` |
 | `danbooru_year_artists` | **整年总收藏算法（独立于 HOT）**：按月采样整年、按该年作品**总收藏数**降序排画师；默认 5% 体型 tag 闸门（只认体型 tag，不认构图）；可选加肤色/肤质「人体参考」和「整体色调」参考 | `year`(必填)、`tags`、`rating`、`limit`、`monthly_sample`、`style_tags`、`style_preset`、`style_match`、`style_threshold`、`style_min_posts`、`style_min_hits`、`style_max_checks`、`appearance_tags`、`appearance_match`、`appearance_threshold`、`color_tags`、`color_match`、`color_threshold`、`compact` |
 | `danbooru_search_tags` | tag 自动补全：规范名、分类、作品数 | `query`、`category`、`limit` |
 | `danbooru_get_tag` | 单个 tag 详情 + wiki 摘要 + 别名/中日文名 | `name` |
@@ -98,9 +117,9 @@
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`allow_rejected_artists`、`forget_artists`、`clear_rejections`、`anchor_pages`、`deep_scan_pages`、`pair_pages`、`cooccurrence_limit`、`cooccurrence_tags`、`subject_tags`(body_tags 的兼容别名) |
 | `danbooru_pixel_style_match` | **像素相似匹配（0.29.0，推荐用于以图找画师）**：给参考图（URL 或本地路径），插件用 tag 通道只**提名**候选画师，然后下载候选 1–3 张样图，用本地 Pillow 描述子（线条/边缘统计、明暗平滑度、色彩丰富度、饱和度、色相直方图）做**图对图**距离排序。身份/外貌 tag（发色、瞳色、服装、角色）完全不参与评分，避免「白毛图就找白毛画师」；需要 Python+Pillow（DSH 自带，可用 `DSH_PYTHON` 覆盖） | `reference_images`(必填)、`candidate_artists`、`style_tags`、`body_tags`、`genre_tags`、`pool_pages`、`cooccurrence_limit`、`pool_size`、`samples_per_artist`、`limit`、`rating`、`allow_rejected_artists` |
-| `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
-| `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
-| `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
+| `danbooru_image_artist_consensus` | （full 模式）**多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
+| `danbooru_part_specialists` | （full 模式）**部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
+| `danbooru_get_post` | （full 模式）单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
 | `danbooru_auth_status` | 看凭据是否已配置、来自哪里（不返回值） | 无 |
 | `danbooru_save_credentials` | 把登录名与 API key 存进 Harness 凭据库（私有文件） | `login`、`apiKey`、`clear` |
 
@@ -427,7 +446,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.29.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.30.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -465,7 +484,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 66 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 67 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -486,6 +505,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.30.0**：按最近 72 小时会话日志的真实调用量精简工具集——默认只注册 11 个核心工具（`search_tags` 565、`search_posts` 287、`get_tag` 129、`related_tags` 43、`style_match` 42、`similar_artists` 39、`artists_from_image` 30、`year_artists` 24、`pixel_style_match`、凭据×2）；低频的 `top_artists`（11）、`part_specialists`（10）、`image_artist_consensus`（2）、`get_post`（18）移入 `toolPreset="full"`（或 `DANBOORU_TOOL_PRESET=full`），代码保留；`verify.mjs` 增加 core/full 预设自检（共 67 项）
 - **0.29.0**：新增 **`danbooru_pixel_style_match`（像素相似匹配）**——不再用 tag 共现排序：tag 通道只提名候选画师，候选样图与参考图下载后由本地 Pillow 描述子（线条/边缘、明暗平滑度、色彩丰富度、饱和度、色相直方图）做图对图距离排序；身份/外貌 tag 完全不参与，解决「白毛图→白毛画师」问题；需要 Python+Pillow（`DSH_PYTHON` 可覆盖），15 个工具，`verify.mjs` 增加像素自检（共 66 项）
 - **0.28.0**：删除客户端候选池上限，新增**采样深度控制**——`anchor_pages`（默认 400 篇/tag）、`deep_scan_pages`（默认 0，最大 500 页 = 10 万篇，可把中小 tag 的画师基本翻完）、`pair_pages`、`cooccurrence_limit`（默认 200 = API 上限）、`cooccurrence_tags`；输出 `pool_stats` 报告实际池子；诚实说明 99% 全站覆盖需翻完大 tag（不可行），`deep_scan_pages` 覆盖中小 tag；`verify.mjs` 增加宽池自检（共 65 项）
 - **0.27.2**：删除「检索器只能在高分/热榜/共现前 100 里筛选」的旧限制描述——自动通道仍按高分/热榜/共现采样，但 `seed_artists` 可点名纳入任意画师，候选不再受采样池限制；工具参数说明、输出 note 与 README 同步

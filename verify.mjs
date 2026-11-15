@@ -21,7 +21,7 @@ const ctx = {
   },
 }
 
-apply(ctx, { minIntervalMs: 1200, contact: 'self-check' })
+apply(ctx, { minIntervalMs: 1200, contact: 'self-check', toolPreset: 'full' })
 
 const signal = new AbortController().signal
 async function call(name, args) {
@@ -40,7 +40,24 @@ function check(label, condition, detail) {
   }
 }
 
-check('registers fifteen tools', registered.size === 15, `registered=${[...registered.keys()].join(', ')}`)
+check('full preset registers fifteen tools', registered.size === 15, `registered=${[...registered.keys()].join(', ')}`)
+
+const coreRegistered = new Map()
+const coreCtx = {
+  tools: {
+    register(definition) {
+      coreRegistered.set(definition.name, definition)
+      return () => coreRegistered.delete(definition.name)
+    },
+  },
+  effect(callback) {
+    const dispose = callback()
+    return () => dispose?.()
+  },
+}
+apply(coreCtx, { contact: 'self-check-core' })
+const coreNames = [...coreRegistered.keys()]
+check('default preset registers eleven core tools', coreNames.length === 11 && !coreNames.includes('danbooru_image_artist_consensus') && !coreNames.includes('danbooru_part_specialists') && !coreNames.includes('danbooru_top_artists') && !coreNames.includes('danbooru_get_post'), `registered=${coreNames.join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false

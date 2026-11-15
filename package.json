@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "private": true,
   "type": "module",
-  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools (15 tools): post/tag search, tag details and wiki, related tags; year-favorites artist ranking with body-shape gate + skin/color references; Hot/rising weighted sampling; similar artists (tag + expression profiles); layered image-to-artist search; style-first tag matching with small-artist discovery, seed_artists and rejection memory; PIXEL-SIMILARITY style matching (downloads reference + candidate images and compares line/shading/palette/hue descriptors, so identity tags cannot drive it); multi-scheme consensus; body-part specialists. Pixel mode needs Python with Pillow.",
+  "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools. Default (core) preset registers the 11 most-used tools: post/tag search, tag details, related tags, year-favorites artist ranking, tag-based style matching, similar artists, image-to-artist search, pixel-similarity style matching, credentials. toolPreset=\"full\" (or DANBOORU_TOOL_PRESET=full) adds the four rarely used extras: weighted Hot/rising artist ranking, part specialists, multi-scheme consensus and single-post lookup.",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

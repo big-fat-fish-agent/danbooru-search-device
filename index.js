@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.29.0'
+const VERSION = '0.30.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -336,6 +336,8 @@ function normalizeConfig(raw) {
     cacheTtlMs: clamp(input.cacheTtlMs, 0, 86_400_000, 600_000),
     defaultRating: ['g', 's', 'q', 'e', 'all'].includes(input.defaultRating) ? input.defaultRating : 'all',
     maxWikiChars: clamp(input.maxWikiChars, 200, 20_000, 4_000),
+    // core = the 11 tools recent usage logs show are actually called; full = all 15.
+    toolPreset: ['core', 'full'].includes(String(input.toolPreset ?? process.env.DANBOORU_TOOL_PRESET ?? '').trim()) ? String(input.toolPreset ?? process.env.DANBOORU_TOOL_PRESET).trim() : 'core',
   }
 }
 
@@ -2871,8 +2873,26 @@ export function apply(ctx, rawConfig = {}) {
     },
   ]
 
+  // Tool presets (0.30.0): by default only the tools that recent session logs show are actually
+  // used are registered, so the model sees a shorter tool list. The rarely used ones stay in the
+  // bundle behind toolPreset="full" (or DANBOORU_TOOL_PRESET=full); nothing is removed.
+  const CORE_TOOL_NAMES = new Set([
+    'danbooru_search_posts',
+    'danbooru_search_tags',
+    'danbooru_get_tag',
+    'danbooru_related_tags',
+    'danbooru_year_artists',
+    'danbooru_style_match',
+    'danbooru_similar_artists',
+    'danbooru_artists_from_image',
+    'danbooru_pixel_style_match',
+    'danbooru_auth_status',
+    'danbooru_save_credentials',
+  ])
+  const enabledTools = config.toolPreset === 'full' ? tools : tools.filter((tool) => CORE_TOOL_NAMES.has(tool.name))
+
   ctx.effect(() => {
-    const disposers = tools.map((tool) => ctx.tools.register(tool))
+    const disposers = enabledTools.map((tool) => ctx.tools.register(tool))
     return () => {
       for (const dispose of disposers) dispose()
     }
