@@ -286,7 +286,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 ### 小体量画师发现（0.21.0 起，0.22.0 补 `seed_artists`）
 
-高分锚点/最新页只能看到「热度够高」的画师，150 帖左右的小号（如 `eigaka`：167 帖）永远进不了采样页。插件用 **style-tag 共现**（`related_tag`，取每个 style tag 的相关画师前 100 名）把所有画这个手法的画师列出来，作为第三条通道：
+自动通道来自高分锚点/最新页与 style-tag 共现（`related_tag`）；不在这些采样池里的画师（如 `eigaka`：167 帖）可能被漏掉，直接用 `seed_artists` 点名即可纳入——候选不再受采样池限制。插件用 **style-tag 共现**把所有画这个手法的画师列出来，作为第三条通道：
 
 ```js
 danbooru_style_match(style_tags="shiny_skin, sweat, lace, colored_lineart",
@@ -390,7 +390,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.27.1 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.27.2 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -449,6 +449,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.27.2**：删除「检索器只能在高分/热榜/共现前 100 里筛选」的旧限制描述——自动通道仍按高分/热榜/共现采样，但 `seed_artists` 可点名纳入任意画师，候选不再受采样池限制；工具参数说明、输出 note 与 README 同步
 - **0.27.1**：更新插件介绍——DSH 描述、`package.json` 描述与 README 开头同步为当前 14 个工具与能力（画风优先匹配、小体量画师、`seed_artists`、拒绝记忆、多方案共识、服装材质效果、身份特征过滤、单维度降权等）；清理旧版本安装包与调试用对比图
 - **0.27.0**：拒绝记忆的语义修正——**只拦自动发现，点名即加回**：`avoid_artists` 记住的画师仍会被自动检索过滤（换下一个最接近的替代者），但 `seed_artists` 显式点名时会重新加进候选并标记 `reinstated_from_rejection` / `rejection_memory.reinstated_this_call`；`allow_rejected_artists` / `forget_artists` / `clear_rejections` 行为不变；`verify.mjs` 断言同步为「自动过滤 + 点名加回」（共 64 项）
 - **0.26.0**：新增**持久拒绝记忆与替代推荐**——`avoid_artists` 会记住被否的画师，后续轮次自动过滤，空出的名额由下一个最接近的画师补上（不再用同一个名字凑数）；`allow_rejected_artists` 仅本次忽略、`forget_artists` 释放单个、`clear_rejections` 清空；`style_match` / `similar_artists` / `artists_from_image` / 共识均生效，输出 `rejection_memory` / `rejected_excluded`；`verify.mjs` 增加 2 项自检（共 64 项）

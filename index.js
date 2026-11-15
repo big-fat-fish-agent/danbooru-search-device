@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.27.1'
+const VERSION = '0.27.2'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -1891,7 +1891,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_style_match',
-      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Identity/appearance attributes (hair colour, hairstyle, eye colour, ornaments, costume nouns, character tags) are ignored; BODY/DETAIL treatment tags (body build, skin colour/shading, areolae, proportions — body_tags) are used as secondary evidence because artists paint those details in very different ways. It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x body, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists that the top-score scans cannot reach (e.g. a 167-post account): they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate. Rejected artists are remembered: names passed in avoid_artists are excluded from AUTOMATIC discovery in later calls (next-best alternatives fill their slots), but explicitly naming one again in seed_artists reinstates it (reinstated_from_rejection marks that) — the memory never permanently blocks a direct request; allow_rejected_artists ignores the memory for one call, forget_artists/clear_rejections release names.',
+      description: 'Find the artists behind an overall look, style-first. By default it does NOT use a character: the goal is the same drawing hand (line, shading, palette, colour tone, composition), not the same character. Identity/appearance attributes (hair colour, hairstyle, eye colour, ornaments, costume nouns, character tags) are ignored; BODY/DETAIL treatment tags (body build, skin colour/shading, areolae, proportions — body_tags) are used as secondary evidence because artists paint those details in very different ways. It scans the all-time top-scored works of the anchor tags (rank-weighted, so the top of the chart counts most and older high-score works are reached), cross-checks with newest-page pair queries (style x style, style x body, style x genre), verifies the shortlist by counting each artist\'s own posts carrying the anchor style tag, and attaches sample posts. Set mode="character" only when a specific identity must match; then character tags anchor the scan and same-character posts are counted instead. A style-tag co-occurrence pass also pulls in small artists (e.g. a 167-post account) that the high-score samples may not include; they are kept when they have at least min_artist_posts posts (default 50) and small_artist_slots of the returned list are reserved for them (discovered_via_style_cooccurrence / artist_posts / reserved_slot mark this path). Explicitly named seed_artists are always considered too, even outside these sampled pools. Feature tags such as half-closed_eyes, eyeshadow, dark-skinned_male, shiny_skin or sparkle are usually prompt effects rather than artist evidence: put rendering traits in style_tags, scene/act traits in genre_tags, and judge candidates on line work, shading, palette, body build, faces and composition. Use prefer_artists / avoid_artists to carry a shortlist between calls and iterate. Rejected artists are remembered: names passed in avoid_artists are excluded from AUTOMATIC discovery in later calls (next-best alternatives fill their slots), but explicitly naming one again in seed_artists reinstates it (reinstated_from_rejection marks that) — the memory never permanently blocks a direct request; allow_rejected_artists ignores the memory for one call, forget_artists/clear_rejections release names.',
       parameters: parameters({
         mode: { type: 'string', enum: ['style', 'character'], description: 'style (default): rank artists by the overall look — rendering, palette and the kind of character depicted; character identity is not used. character: anchor on character tags instead, only when the same character must appear.' },
         style_tags: { type: 'string', description: 'Primary evidence: rendering/technique tags for line, shading, palette, lighting, material, e.g. "colored_lineart, soft_shading, shiny_skin, latex". The first two tags become the anchor scans.' },
@@ -1910,7 +1910,7 @@ export function apply(ctx, rawConfig = {}) {
         allow_rejected_artists: { type: 'boolean', description: 'Ignore the remembered rejection list for this call only (they stay remembered). Use when the user deliberately wants to re-inspect a previously rejected artist.' },
         forget_artists: { type: 'string', description: 'Comma-separated artist tags to release from the rejection memory (e.g. when the user changes their mind).' },
         clear_rejections: { type: 'boolean', description: 'Wipe the whole remembered rejection list.' },
-        discover_small_artists: { type: 'boolean', description: 'Also pull in small artists that top-score anchor/pair scans cannot reach: a style-tag co-occurrence (related_tag) pass lists every artist who draws that look regardless of heat, and `small_artist_slots` slots are reserved for them (default true).' },
+        discover_small_artists: { type: 'boolean', description: 'Also pull in small artists: a style-tag co-occurrence (related_tag) pass lists artists who draw that look, and `small_artist_slots` slots are reserved for them (default true).' },
         min_artist_posts: { type: 'integer', minimum: 1, maximum: 5000, description: 'Minimum site-wide post count for an artist to be kept (default 50); below this an artist is treated as too small to be reliable.' },
         small_artist_slots: { type: 'integer', minimum: 0, maximum: 10, description: 'Guaranteed slots for small-artist discoveries in the returned list (default 3).' },
         seed_artists: { type: 'string', description: 'Comma-separated artist tags to verify against the same style/genre signals and force into the result even when every scan misses them. This is the deterministic path for small artists whose relevant posts score too low to enter any top-N sample (e.g. eigaka).' },
@@ -2094,11 +2094,10 @@ export function apply(ctx, rawConfig = {}) {
           for (const row of rows) recordArtists(row.post, pair.weight / Math.max(1, rows.length), pair.kind, 'pair')
         }
 
-        // Small-artist discovery: anchor/pair scans only ever see artists whose posts rank high
-        // enough to enter the sampled pages, so a ~150-post account (e.g. eigaka) can never surface.
-        // Style-tag co-occurrence (`related_tag`) lists every artist who draws that look regardless of
-        // heat, which is the only way in for small accounts. Artists below min_artist_posts are
-        // dropped as too small to judge; `small_artist_slots` then guarantee they stay visible.
+        // Small-artist discovery: anchor/pair scans sample high-score pages, so add a style-tag
+        // co-occurrence (`related_tag`) pass that lists artists who draw that look. Artists below
+        // min_artist_posts are dropped as too small to judge; `small_artist_slots` then keep them
+        // visible. Explicit seed_artists can add any named artist outside the sampled pools.
         const EXPANSION_KIND = 'style-tag-cooccurrence'
         const expansionScores = new Map()
         const expansionScans = []
@@ -2131,10 +2130,9 @@ export function apply(ctx, rawConfig = {}) {
         }
         const maxExpansion = [...expansionScores.values()].reduce((max, info) => Math.max(max, info.score), 0) || 1
 
-        // Explicit seeds: the deterministic small-artist path. related_tag only lists the top-100
-        // artists by co-occurrence, so a ~167-post account whose matching posts sit deep in every
-        // ordering (e.g. eigaka, best score 776) never appears there either. Seeds are verified on
-        // their own works instead: artist post count via /tags.json, style/genre overlap on its posts.
+        // Explicit seeds: the deterministic path for any artist the caller wants considered,
+        // including accounts outside the sampled/co-occurrence pools. Seeds are verified on their
+        // own works: artist post count via /tags.json, style/genre overlap on its posts.
         const seedScores = new Map()
         const seedReport = []
         for (const seedName of seedArtists) {
@@ -2343,7 +2341,7 @@ export function apply(ctx, rawConfig = {}) {
               .slice(0, 10)
               .map(([name, info]) => ({ name, artist_posts: info.posts, artist_url: artistPostsUrl(name) })),
             note: discoverSmallArtists
-              ? 'Style-tag co-occurrence lists every artist who draws that look, so small accounts (well under the top-score pages) can still enter the list; `top` lists the highest-scoring small ones. Co-occurrence only covers the tag API\'s top 100 artists per tag, so an account whose matching posts score very low (e.g. eigaka: 167 posts, best score 776) can still be missed — seed_artists is the deterministic path for those.'
+              ? 'Style-tag co-occurrence surfaces artists who draw that look, and `top` lists the highest-scoring small ones. Any named artist outside these sampled pools can still be added through seed_artists.'
               : 'Small-artist discovery disabled for this call.',
           },
           seed_artists: seedReport,
