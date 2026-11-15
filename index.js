@@ -81,6 +81,50 @@ const round = (value, digits = 3) => (typeof value === 'number' && Number.isFini
 /** Drop undefined values (and NaN/Infinity) so a tool result always round-trips through JSON. */
 const toLossless = (value) => JSON.parse(JSON.stringify(value))
 
+/** Weight shape for a ready-to-paste NAI v5 artist string.
+ *
+ * Validated on the 2026-11-15 reference pair: a soup keeps one full-weight anchor and a shallow
+ * decaying tail (0.85 → 0.2). Two failure modes this shape is meant to avoid, both observed:
+ * a string with no 1.0 anchor drifts toward an average of everyone; a long tail of ≤0.3 names
+ * (0.24 / 0.16 / 0.12) adds noise instead of style. Callers still judge the render, not the order. */
+const ARTIST_SOUP_SHAPE = [1, 0.85, 0.6, 0.5, 0.4, 0.3, 0.2]
+
+/** NAI prompt weights: a tag whose weight is exactly 1 is emitted bare (no `::` wrapper), because
+ * wrapping it adds nothing and makes the string longer; every other weight keeps the `w::tag::`
+ * form. A name ending in a digit must be followed by whitespace before `::`, otherwise the digit
+ * and the delimiter merge into one malformed token. */
+const isUnitWeight = (weight) => Number.isFinite(Number(weight)) && Math.abs(Number(weight) - 1) < 1e-9
+const formatWeightedTag = (tag, weight) => {
+  if (isUnitWeight(weight)) return String(tag)
+  const text = String(tag)
+  return `${String(weight)}::${text}${/[0-9]$/.test(text.replace(/\\/g, '')) ? ' ' : ''}::`
+}
+const naiWeightedName = (name, weight) => formatWeightedTag(name, weight)
+
+/** Ready-to-paste artist string built from the ranked finalists, in call order (best first). */
+function artistSoupFor(rows, maxArtists = ARTIST_SOUP_SHAPE.length) {
+  const picked = (Array.isArray(rows) ? rows : []).slice(0, maxArtists)
+  if (picked.length === 0) {
+    return { string: '', artists: [], total_weight: 0, top3_share: null, note: 'No candidate survived filtering, so no artist string was produced.' }
+  }
+  const artists = picked.map((row, index) => ({
+    name: row.entry.name,
+    weight: ARTIST_SOUP_SHAPE[index] ?? ARTIST_SOUP_SHAPE[ARTIST_SOUP_SHAPE.length - 1],
+    score: round(row.score * 100, 1),
+    style_posts: row.stylePosts ?? null,
+    body_share: round(row.bodyShare, 2),
+  }))
+  const total = artists.reduce((sum, row) => sum + row.weight, 0)
+  const top3 = artists.slice(0, 3).reduce((sum, row) => sum + row.weight, 0)
+  return {
+    string: `${artists.map((row) => naiWeightedName(row.name, row.weight)).join(', ')},`,
+    artists,
+    total_weight: round(total, 2),
+    top3_share: round(top3 / total, 2),
+    note: 'Paste as the artist block of a NAI v5 prompt: weight 1 stays bare, and a name ending in a digit is followed by a space before `::`. Shape = one 1.0 anchor then 0.85/0.6/0.5/0.4/0.3/0.2. Keep the 1.0 anchor: deleting the top name to "clean up" the soup is what made an earlier round drift. Drop the ≤0.3 tail before changing the top three. Rendering is judged on the five axes in `verify`, not on rank.',
+  }
+}
+
 /** Local calendar day as YYYY-MM-DD; the Popular page takes it as a week/month anchor. */
 const isoDay = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -620,6 +664,69 @@ for path in sys.argv[1:]:
         out.append({'error': str(exc)})
 print(json.dumps(out))
 `
+
+/**
+ * Artist-string slots ("本次构成"): each slot stands for ONE job the artist does in
+ * the picture, and the weight measures how much of the picture that job owns —
+ * not the candidate's own retrieval score and not the artist's popularity.
+ *
+ * Reference construction (a 6-slot string tuned against a real NAI V5 output):
+ *   0.85 body / 0.60 skin / 0.50 brush / 0.40 material / 0.20 accent / 0.30 theme
+ * One artist per slot: a slot's best candidate is taken out of the pool, so the
+ * same name never fills two jobs.
+ */
+const ARTIST_STRING_SLOTS = [
+  { key: 'body', role: 'body/volume', zh: '主体体积（成人脸/软体积/暗底）', weight: 0.85, dims: ['person'] },
+  { key: 'skin', role: 'skin/oil', zh: '油汗皮层（写实皮肤/汗）', weight: 0.6, dims: ['technique'] },
+  { key: 'brush', role: 'soft brush', zh: '柔光笔触（空气笔/细线）', weight: 0.5, dims: ['lineart'] },
+  { key: 'material', role: 'material gloss', zh: '材质光泽（金属/织物高光）', weight: 0.4, dims: ['clothing'] },
+  { key: 'accent', role: 'wet accent', zh: '湿感点缀（低权重风味）', weight: 0.2, dims: ['expression'] },
+  { key: 'theme', role: 'theme/palette', zh: '题材底色（世界观/配色）', weight: 0.3, dims: ['color', 'tag'] },
+]
+
+// NAI treats ( ) as weight syntax, so artist names containing them must be escaped.
+const escapeNaiTag = (name) => String(name).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+
+/**
+ * Turn ranked candidates into a ready-to-paste artist string, one artist per slot.
+ * Slot score = (how many of the slot's dimensions the artist actually hit) >
+ * (how much evidence in those dimensions) > (overall retrieval score), so a slot
+ * never grabs an artist that only matched it by accident.
+ */
+function buildArtistString(candidates, options = {}) {
+  const style = options.style === 'artist_prefix' ? 'artist_prefix' : 'plain'
+  const maxSlots = clamp(options.maxSlots, 1, ARTIST_STRING_SLOTS.length, ARTIST_STRING_SLOTS.length)
+  const used = new Set()
+  const slots = []
+  for (const slot of ARTIST_STRING_SLOTS.slice(0, maxSlots)) {
+    let best = null
+    for (const candidate of candidates) {
+      if (used.has(candidate.name)) continue
+      const hitDims = slot.dims.filter((dim) => (candidate.dimensions?.[dim] ?? 0) > 0)
+      if (hitDims.length === 0) continue
+      const evidence = slot.dims.reduce((sum, dim) => sum + (candidate.dimensions?.[dim] ?? 0), 0)
+      const slotScore = hitDims.length * 1e9 + evidence * 1e6 + (candidate.score ?? 0)
+      if (!best || slotScore > best.slotScore) best = { candidate, hitDims, evidence, slotScore }
+    }
+    if (!best) continue
+    used.add(best.candidate.name)
+    slots.push({
+      slot: slot.key,
+      role: slot.role,
+      role_zh: slot.zh,
+      artist: best.candidate.name,
+      weight: slot.weight,
+      matched_dimensions: best.hitDims,
+      evidence: best.evidence,
+    })
+  }
+  const parts = slots.map((entry) => {
+    const tag = style === 'artist_prefix' ? `artist:${escapeNaiTag(entry.artist)}` : escapeNaiTag(entry.artist)
+    // Weight 1 is emitted bare (no `::` wrapper); all other slots keep the explicit weight.
+    return formatWeightedTag(tag, entry.weight)
+  })
+  return { string: parts.join(', '), slots }
+}
 
 const output = {
   schema: { type: 'object', additionalProperties: true },
@@ -2092,7 +2199,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing material effect 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing material effect 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. clothing_tags measures the MATERIAL EFFECT of garments (sheen/gloss, translucency, wetness, lace/silk thickness, folds) — not the garment type: garment nouns (lingerie/bra/shirt/dress/… are identity features and are filtered out. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags and body-build tags instead. Whole-look evidence beats single-signal flukes: when several dimensions are searched, artists supported by only one dimension get a ×0.55 demotion and are flagged single_dimension; each candidate reports dimensions_used. For a whole-look reverse search prefer danbooru_style_match first, then cross-check its shortlist here. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops).',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing material effect 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing material effect 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. clothing_tags measures the MATERIAL EFFECT of garments (sheen/gloss, translucency, wetness, lace/silk thickness, folds) — not the garment type: garment nouns (lingerie/bra/shirt/dress/… are identity features and are filtered out. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags and body-build tags instead. Whole-look evidence beats single-signal flukes: when several dimensions are searched, artists supported by only one dimension get a ×0.55 demotion and are flagged single_dimension; each candidate reports dimensions_used. For a whole-look reverse search prefer danbooru_style_match first, then cross-check its shortlist here. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops). It also returns artist_string: a ready-to-paste NAI artist string built on a fixed six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30), one artist per job, so the caller can hand the user a prompt instead of a ranking; artist_string_slots shows which dimension evidence filled each slot.',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
@@ -2108,6 +2215,8 @@ export function apply(ctx, rawConfig = {}) {
         examples: { type: 'integer', minimum: 0, maximum: 3, description: 'Sample posts to attach per candidate (default 0; each costs one request).' },
         example_tags: { type: 'string', description: 'Comma-separated tags examples should carry (default: expression_tags, else image_tags).' },
         allow_no_face: { type: 'boolean', description: 'Set true only when the user explicitly wants back views, silhouettes or lower-body crops; otherwise examples prefer a visible face.' },
+        string_style: { type: 'string', enum: ['plain', 'artist_prefix'], description: 'Format of artist_string: plain (default) emits "0.85::marse_\\(rokudaime\\)::"; artist_prefix emits "0.85::artist:marse_\\(rokudaime\\)::".' },
+        string_slots: { type: 'integer', minimum: 1, maximum: 6, description: 'How many of the six artist-string slots to fill (default 6). Slots are filled in construction order; a slot with no evidence is omitted.' },
       }, ['image_tags']),
       output,
       async execute(args, exec) {
@@ -2254,6 +2363,8 @@ export function apply(ctx, rawConfig = {}) {
         candidates.length = 0
         candidates.push(...imageRejected.kept)
 
+        const artistString = buildArtistString(candidates, { style: args?.string_style, maxSlots: args?.string_slots })
+
         return toLossless({
           method: 'image tags →year-scoped artist frequency, layered priority',
           mode,
@@ -2263,6 +2374,11 @@ export function apply(ctx, rawConfig = {}) {
           candidates,
           excluded_identity_tags: excludedIdentityTags,
           rejected_excluded: imageRejected.excluded,
+          // "以图找画师" 的最终交付物：一条可直接粘进 NAI 的画师串（六槽构成，见 ARTIST_STRING_SLOTS）。
+          artist_string: artistString.string,
+          artist_string_slots: artistString.slots,
+          artist_string_note:
+            'artist_string follows the six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30): one artist per job, weight ranked by how much of the picture that job owns rather than by retrieval score or artist popularity. Raise/lower a slot weight in the prompt instead of stacking more artists; empty slots are omitted. Verify the string visually before use — slots are assigned from tag-dimension evidence, not from an embedding comparison.',
           dedupe: { method: 'near-duplicate cluster (parent_id / md5)', groups: groupStats.map((group) => ({ key: group.key, unique_clusters: group.unique_clusters, deduped_posts: group.deduped_posts })) },
           note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). Character-identity features (hair/eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are dropped and reported in excluded_identity_tags — they describe who is in the picture, not the drawing hand; pass rendering tags (technique/lineart/clothing material/color/lighting) and body-build tags instead. Near-duplicate variants (same parent post or md5) are collapsed into one visual cluster so a variant set does not stack evidence, and examples are drawn from distinct clusters. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
         })
@@ -2867,6 +2983,7 @@ export function apply(ctx, rawConfig = {}) {
             reserved_slot: reservedNames.has(finalist.entry.name),
             examples: examples.get(finalist.entry.name) ?? [],
           })),
+          artist_soup: artistSoupFor(finalistRows),
           small_artist_discovery: {
             enabled: discoverSmallArtists,
             min_artist_posts: minArtistPosts,
@@ -2989,4 +3106,4 @@ export function apply(ctx, rawConfig = {}) {
 }
 
 /** Test seam: lets verify.mjs exercise the client without mounting the plugin. */
-export const __internals = { createClient, normalizeConfig, mapPost, httpMessage }
+export const __internals = { createClient, normalizeConfig, mapPost, httpMessage, formatWeightedTag }
