@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.31.0'
+const VERSION = '0.33.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -99,7 +99,6 @@ const formatWeightedTag = (tag, weight) => {
   const text = String(tag)
   return `${String(weight)}::${text}${/[0-9]$/.test(text.replace(/\\/g, '')) ? ' ' : ''}::`
 }
-const naiWeightedName = (name, weight) => formatWeightedTag(name, weight)
 
 /** Ready-to-paste artist string built from the ranked finalists, in call order (best first). */
 function artistSoupFor(rows, maxArtists = ARTIST_SOUP_SHAPE.length) {
@@ -117,7 +116,7 @@ function artistSoupFor(rows, maxArtists = ARTIST_SOUP_SHAPE.length) {
   const total = artists.reduce((sum, row) => sum + row.weight, 0)
   const top3 = artists.slice(0, 3).reduce((sum, row) => sum + row.weight, 0)
   return {
-    string: `${artists.map((row) => naiWeightedName(row.name, row.weight)).join(', ')},`,
+    string: `${artists.map((row) => formatWeightedTag(row.name, row.weight)).join(', ')},`,
     artists,
     total_weight: round(total, 2),
     top3_share: round(top3 / total, 2),
@@ -681,8 +680,15 @@ const ARTIST_STRING_SLOTS = [
   { key: 'brush', role: 'soft brush', zh: '柔光笔触（空气笔/细线）', weight: 0.5, dims: ['lineart'] },
   { key: 'material', role: 'material gloss', zh: '材质光泽（金属/织物高光）', weight: 0.4, dims: ['clothing'] },
   { key: 'accent', role: 'wet accent', zh: '湿感点缀（低权重风味）', weight: 0.2, dims: ['expression'] },
-  { key: 'theme', role: 'theme/palette', zh: '题材底色（世界观/配色）', weight: 0.3, dims: ['color', 'tag'] },
+  { key: 'theme', role: 'theme/palette', zh: '题材底色（世界观/配色）', weight: 0.3, dims: ['color'] },
 ]
+
+/**
+ * Every dimension the tool can search, in display order. Each one is also an
+ * "aspect" board: its top contributor is kept even when the whole-image ranking
+ * would have dropped that artist.
+ */
+const DIMENSION_ORDER = ['person', 'expression', 'technique', 'lineart', 'clothing', 'color', 'lighting', 'tag']
 
 // NAI treats ( ) as weight syntax, so artist names containing them must be escaped.
 const escapeNaiTag = (name) => String(name).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
@@ -2199,7 +2205,7 @@ export function apply(ctx, rawConfig = {}) {
     },
     {
       name: 'danbooru_artists_from_image',
-      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing material effect 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing material effect 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. clothing_tags measures the MATERIAL EFFECT of garments (sheen/gloss, translucency, wetness, lace/silk thickness, folds) — not the garment type: garment nouns (lingerie/bra/shirt/dress/… are identity features and are filtered out. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags and body-build tags instead. Whole-look evidence beats single-signal flukes: when several dimensions are searched, artists supported by only one dimension get a ×0.55 demotion and are flagged single_dimension; each candidate reports dimensions_used. For a whole-look reverse search prefer danbooru_style_match first, then cross-check its shortlist here. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops). It also returns artist_string: a ready-to-paste NAI artist string built on a fixed six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30), one artist per job, so the caller can hand the user a prompt instead of a ranking; artist_string_slots shows which dimension evidence filled each slot.',
+      description: 'Reverse-search artists from an image that the caller has described with Danbooru tags (the plugin has no vision; the agent looks at the image and groups the tags). Every tag in every group is searched separately and the results are aggregated per artist, so line quality, lighting, palette and material all enter the score. mode="person" (default): person/character style 0.22 > expression style 0.12 > rendering technique 0.22 > lineart 0.18 > clothing material effect 0.10 > color palette 0.06 > lighting 0.05 > general tags 0.05. mode="style": rendering technique 0.28 > lineart 0.24 > clothing material effect 0.12 > color palette 0.12 > lighting 0.10 > person style 0.08 > expression 0.02 > tags 0.04. clothing_tags measures the MATERIAL EFFECT of garments (sheen/gloss, translucency, wetness, lace/silk thickness, folds) — not the garment type: garment nouns (lingerie/bra/shirt/dress/… are identity features and are filtered out. Character-identity features (hair and eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are NOT drawing-hand evidence: they are dropped before scoring and returned in excluded_identity_tags, so pass rendering tags and body-build tags instead. Whole-look evidence beats single-signal flukes: when several dimensions are searched, artists supported by only one dimension get a ×0.55 demotion and are flagged single_dimension; each candidate reports dimensions_used. For a whole-look reverse search prefer danbooru_style_match first, then cross-check its shortlist here. It is a tag/search-frequency heuristic, not an image embedding; confirm candidates visually. Pass examples>0 to attach sample posts (soft rule: prefer the required tags and a visible face; allow_no_face=true only when the user asks for back views/silhouettes/lower-body crops). It also returns artist_string: a ready-to-paste NAI artist string built on a fixed six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30), one artist per job, so the caller can hand the user a prompt instead of a ranking; artist_string_slots shows which dimension evidence filled each slot. Every dimension also gets its own leader board: an artist that is the top contributor for ONE aspect is kept in the slot pool even when its whole-image rank falls outside limit, and leaders that still did not fit a slot come back in try_next with a suggested weight of 0.15 — add and compare them rather than dropping them, because the one-aspect specialist is often the least replaceable part of the look.',
       parameters: parameters({
         image_tags: { type: 'string', description: 'Required. Comma-separated Danbooru tags describing the image, e.g. "latex bodysuit, blue hair, white background".' },
         person_tags: { type: 'string', description: 'Tags for the person/character style: body proportions, face features, character design, e.g. "huge_breasts, thick_thighs, mature_female".' },
@@ -2303,7 +2309,7 @@ export function apply(ctx, rawConfig = {}) {
         // Whole-look evidence beats single-signal flukes: an artist supported by only one dimension
         // (e.g. lineart only) is demoted when several dimensions were actually searched.
         const groupsUsed = groups.length
-        const candidates = [...standing.values()]
+        const ranked = [...standing.values()]
           .map((entry) => {
             const dimensionCount = Object.keys(entry.dimensions).length
             const singleDimension = dimensionCount <= 1
@@ -2312,21 +2318,37 @@ export function apply(ctx, rawConfig = {}) {
             return { entry, dimensionCount, singleDimension, adjusted }
           })
           .sort((left, right) => right.adjusted - left.adjusted || right.entry.posts - left.entry.posts || left.entry.name.localeCompare(right.entry.name))
-          .slice(0, limit)
-          .map(({ entry, dimensionCount, singleDimension, adjusted }) => {
-            const threeDShare = entry.posts > 0 ? entry.three_d / entry.posts : 0
-            return {
-              name: entry.name,
-              artist_url: artistPostsUrl(entry.name, year),
-              // Candidates leaning on 3D/photoreal renders are pushed down: the target is a 2D drawing.
-              score: round(adjusted * 100, 2),
-              posts: entry.posts,
-              three_d_share: round(threeDShare, 3),
-              dimensions: entry.dimensions,
-              dimensions_used: dimensionCount,
-              single_dimension: singleDimension,
-            }
-          })
+
+        const toCandidate = ({ entry, dimensionCount, singleDimension, adjusted }) => {
+          const threeDShare = entry.posts > 0 ? entry.three_d / entry.posts : 0
+          return {
+            name: entry.name,
+            artist_url: artistPostsUrl(entry.name, year),
+            // Candidates leaning on 3D/photoreal renders are pushed down: the target is a 2D drawing.
+            score: round(adjusted * 100, 2),
+            posts: entry.posts,
+            three_d_share: round(threeDShare, 3),
+            dimensions: entry.dimensions,
+            dimensions_used: dimensionCount,
+            single_dimension: singleDimension,
+          }
+        }
+
+        const candidates = ranked.slice(0, limit).map(toCandidate)
+
+        // 每一维度单独成榜：某个方面最强的画师即便全局排名很低，也要保住——不能因为
+        // 「整图像不像」把它截掉。A one-aspect specialist (sweat / lineart / lighting) is
+        // exactly what a whole-image ranking drops first, and what a style mix can least replace.
+        const aspectLeaders = []
+        for (const dimension of DIMENSION_ORDER) {
+          let best = null
+          for (const row of ranked) {
+            const evidence = row.entry.dimensions?.[dimension] ?? 0
+            if (evidence <= 0) continue
+            if (!best || evidence > best.evidence) best = { dimension, entry: row.entry, evidence, row }
+          }
+          if (best) aspectLeaders.push(best)
+        }
 
         if (exampleCount > 0) {
           const requested = parseTagList(args?.example_tags)
@@ -2363,7 +2385,39 @@ export function apply(ctx, rawConfig = {}) {
         candidates.length = 0
         candidates.push(...imageRejected.kept)
 
-        const artistString = buildArtistString(candidates, { style: args?.string_style, maxSlots: args?.string_slots })
+        // 维度榜首即使落在 limit 之外，也进槽位池；拒绝记忆仍然优先。
+        const leaderCandidates = aspectLeaders
+          .filter((leader) => !candidates.some((candidate) => candidate.name === leader.entry.name))
+          .map((leader) => toCandidate(leader.row))
+        const leaderRejected = filterRejectedArtists(leaderCandidates)
+        const slotPool = [...candidates, ...leaderRejected.kept]
+
+        const artistString = buildArtistString(slotPool, { style: args?.string_style, maxSlots: args?.string_slots })
+
+        const usedNames = new Set(artistString.slots.map((slot) => slot.artist))
+        const leaderNames = new Set(aspectLeaders.map((leader) => leader.entry.name))
+        for (const slot of artistString.slots) slot.from_aspect_leader = leaderNames.has(slot.artist)
+        const aspectLeaderReport = aspectLeaders.map((leader) => ({
+          dimension: leader.dimension,
+          artist: leader.entry.name,
+          artist_url: artistPostsUrl(leader.entry.name, year),
+          evidence: leader.evidence,
+          global_rank: ranked.findIndex((row) => row.entry.name === leader.entry.name) + 1,
+          in_string: usedNames.has(leader.entry.name),
+        }))
+        const tryNext = aspectLeaderReport
+          .filter((leader) => !leader.in_string)
+          .sort((left, right) => right.evidence - left.evidence)
+          .slice(0, 3)
+          .map((leader) => ({
+            artist: leader.artist,
+            artist_url: leader.artist_url,
+            leads: leader.dimension,
+            evidence: leader.evidence,
+            global_rank: leader.global_rank,
+            suggested_weight: 0.15,
+            reason: `Top contributor for "${leader.dimension}" in this image but not the closest whole-image match. Add it at ~0.15 and compare before dropping it — a one-aspect specialist is usually the least replaceable part of the look.`,
+          }))
 
         return toLossless({
           method: 'image tags →year-scoped artist frequency, layered priority',
@@ -2373,12 +2427,14 @@ export function apply(ctx, rawConfig = {}) {
           groups: groupStats,
           candidates,
           excluded_identity_tags: excludedIdentityTags,
-          rejected_excluded: imageRejected.excluded,
+          rejected_excluded: [...imageRejected.excluded, ...leaderRejected.excluded],
           // "以图找画师" 的最终交付物：一条可直接粘进 NAI 的画师串（六槽构成，见 ARTIST_STRING_SLOTS）。
           artist_string: artistString.string,
           artist_string_slots: artistString.slots,
+          aspect_leaders: aspectLeaderReport,
+          try_next: tryNext,
           artist_string_note:
-            'artist_string follows the six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30): one artist per job, weight ranked by how much of the picture that job owns rather than by retrieval score or artist popularity. Raise/lower a slot weight in the prompt instead of stacking more artists; empty slots are omitted. Verify the string visually before use — slots are assigned from tag-dimension evidence, not from an embedding comparison.',
+            'artist_string follows the six-slot construction (body 0.85 > skin 0.60 > brush 0.50 > material 0.40 > accent 0.20 > theme 0.30): one artist per job, weight ranked by how much of the picture that job owns rather than by retrieval score or artist popularity. Every dimension also has its own leader board (aspect_leaders): a specialist that leads one aspect is kept for the slot that aspect feeds even when its global rank is outside limit, and specialists that did not fit a slot are returned in try_next with a suggested weight of 0.15 — add them and compare instead of dropping them. Raise/lower a slot weight in the prompt instead of stacking more artists; empty slots are omitted. Verify the string visually before use — slots are assigned from tag-dimension evidence, not from an embedding comparison.',
           dedupe: { method: 'near-duplicate cluster (parent_id / md5)', groups: groupStats.map((group) => ({ key: group.key, unique_clusters: group.unique_clusters, deduped_posts: group.deduped_posts })) },
           note: 'The agent must look at the image and supply the tag groups; this tool only aggregates Danbooru search results for those tags (optionally year-scoped). Character-identity features (hair/eye colour, horns, halo, ears, tail, wings, ornaments, garment nouns) are dropped and reported in excluded_identity_tags — they describe who is in the picture, not the drawing hand; pass rendering tags (technique/lineart/clothing material/color/lighting) and body-build tags instead. Near-duplicate variants (same parent post or md5) are collapsed into one visual cluster so a variant set does not stack evidence, and examples are drawn from distinct clusters. It is a heuristic, not visual embedding similarity — confirm candidates visually on rendering, body build/pose, face features and expressions.',
         })

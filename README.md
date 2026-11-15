@@ -283,7 +283,10 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - **一槽一位画师**，取走即不再复用：同一个名字不会既占「体积」又占「笔触」
 - **槽位分** = 命中该槽维度数 > 该维度的证据量 > 检索总分，避免「只靠一个维度擦边」的画师占高权重槽
 - **空槽跳过**，不拿低分候选凑数：宁可 4 个槽，也不写 6 个凑数名字
-- **权重看画面占比**，不是画师强弱：所以主槽固定 0.85、点缀固定 0.20；要调就改权重，不要再往串里叠画师
+- **每个维度独立成榜（`aspect_leaders`）**：`person`/`technique`/`lineart`/`clothing`/`expression`/`color`/`lighting`/`tag` 各排一个榜首；榜首即使全局排名掉出 `limit` 也照样进槽位池，**不因为「整图像不像」被截掉**
+- **没进槽的榜首不删，进 `try_next`**：建议权重 0.15 并注明「它是某方面的最大贡献者」，让调用方**先加进串里比一比**再决定去留——某个方面最强的画师，往往就是最不可替代的那一块
+- **权重看画面占比**，不是画师强弱：所以主槽固定 0.8
+- **权重为 1 的 tag 不再包 `::`**（0.33.0 起统一由 `formatWeightedTag` 处理）：例如 `artist_soup` 的 1.0 anchor 直接写 `hews`，而不是 `1.0::hews::`；其余权重仍保留 `0.85::name::` 形式，名字以数字结尾时补空格再 `::`5、点缀固定 0.20；要调就改权重，不要再往串里叠画师
 - `string_style="artist_prefix"` 输出 `0.85::artist:name::`；`string_slots` 控制填几个槽（默认 6）
 - 名字里的括号自动转义为 `\(` `\)`，可以直接粘进 NAI
 
@@ -478,7 +481,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.31.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.33.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -516,7 +519,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 68 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 81 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -537,7 +540,7 @@ node verify.mjs
 
 ## 更新记录
 
-- **0.33.0**：`danbooru_style_match` 新增**成品画师串 `artist_soup`**——按 `1.0 / 0.85 / 0.6 / 0.5 / 0.4 / 0.3 / 0.2` 的权重形状（最多 7 位、`top3_share` 约 0.65~0.70）把最终候选拼成可直接粘贴的 NAI 串，输出 `string` / `artists[]` / `total_weight` / `top3_share`；两条 NAI 书写规则内置：**权重 1 不加 `::` 框**、**名字以数字结尾时在 `::` 前补空格**。该形状来自 2026-11-15 的实测回归：没有 1.0 锚的串会向「所有人的平均」漂移，而 ≤0.3 的长尾（0.24 / 0.16 / 0.12）只增加噪声；**删掉排第一的名字来「清理」画师串会让画面明显跑偏**
+- **0.33.0**：`danbooru_style_match` 新增**成品画师串 `artist_soup`**（并加入本轮改动：**权重为 1 的 tag 裸输出，不再被 `::` 权重框包裹**——`artist_soup` 的 1.0 anchor 直接是 `hews`；`buildArtistString` / `naiWeightedName` 统一走 `formatWeightedTag`，权重 1 判定支持 `1` 与 `1.0`），——按 `1.0 / 0.85 / 0.6 / 0.5 / 0.4 / 0.3 / 0.2` 的权重形状（最多 7 位、`top3_share` 约 0.65~0.70）把最终候选拼成可直接粘贴的 NAI 串，输出 `string` / `artists[]` / `total_weight` / `top3_share`；两条 NAI 书写规则内置：**权重 1 不加 `::` 框**、**名字以数字结尾时在 `::` 前补空格**。该形状来自 2026-11-15 的实测回归：没有 1.0 锚的串会向「所有人的平均」漂移，而 ≤0.3 的长尾（0.24 / 0.16 / 0.12）只增加噪声；**删掉排第一的名字来「清理」画师串会让画面明显跑偏**
 - **0.32.0**：`danbooru_artists_from_image`（以图找画师）的交付物改为**画师串**——新增「六槽职责构成」（`body` 0.85 / `skin` 0.60 / `brush` 0.50 / `material` 0.40 / `accent` 0.20 / `theme` 0.30），一槽一位画师、同一位不重复占槽，权重按「该职责在画面里的占比」而不是检索分或画师名气给；输出 `artist_string`（NAI 语法，括号自动转义）与 `artist_string_slots`（每槽命中的维度证据），新增 `string_style`（`plain` / `artist_prefix`）与 `string_slots`；空槽跳过不凑数；`verify.mjs` 增加 4 项自检（脚本现共 77 项 `check()`）
 - **0.31.0**：`danbooru_pixel_style_match` 新增**年份标注**——对每个返回画师比较指定年份（默认去年+前年，如 2025/2024）的作品与参考图的像素相似度，在画师名后追加更贴近的年份：单年贴近 → `hews 2025`，两年都贴近 → `hews 2024 2025`；输出 `year_fit` / `years` / `artist_with_years` 与整份 `artist_string`；`year_check` / `years` / `year_samples` / `year_tolerance` 可调；`verify.mjs` 增加年份标注自检（共 68 项）
 - **0.30.0**：按最近 72 小时会话日志的真实调用量精简工具集——默认只注册 11 个核心工具（`search_tags` 565、`search_posts` 287、`get_tag` 129、`related_tags` 43、`style_match` 42、`similar_artists` 39、`artists_from_image` 30、`year_artists` 24、`pixel_style_match`、凭据×2）；低频的 `top_artists`（11）、`part_specialists`（10）、`image_artist_consensus`（2）、`get_post`（18）移入 `toolPreset="full"`（或 `DANBOORU_TOOL_PRESET=full`），代码保留；`verify.mjs` 增加 core/full 预设自检（共 67 项）
