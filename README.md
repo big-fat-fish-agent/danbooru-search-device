@@ -8,12 +8,13 @@
 
 它的目标是「AI 绘画提示词调研 + 画师调研」：把一个模糊想法变成可用的 Danbooru tag，再看真实作品如何用这些 tag；也可以按整年总收藏找画师（带体型 tag 闸门与年份范围链接），或用 HOT / 周榜 / 参考权重三级采样找参考画师。
 
-## 当前能力一览（14 个工具）
+## 当前能力一览（15 个工具）
 
 - **检索**：`search_posts`（年份/评级/Hot/score）、`search_tags`、`get_tag`（wiki + 别名）、`related_tags`
 - **画师发现**：`top_artists`（HOT/周榜/参考权重三级采样）、`year_artists`（整年总收藏 + 体型 tag 闸门 + 肤色/肤质 + 整体色调参考）、`similar_artists`（tag 画像 + 表情画像余弦）
 - **以图搜画师**：`artists_from_image`（分层 tag 加权；角色身份/装饰特征自动剔除；单维度命中降权；同源变体聚簇去重）
 - **整体画风匹配**：`style_match`（画风优先；身份外貌 tag 剔除、`body_tags` 作次级证据；小体量画师共现发现 + `seed_artists` 点名加回 + 持久拒绝记忆；可选角色模式）
+- **像素相似匹配**：`pixel_style_match`（给参考图 → 下载候选样图 → 本地 Pillow 描述子做图对图排序；身份/外貌 tag 完全不参与，专治「白毛图→白毛画师」）
 - **多方案共识**：`image_artist_consensus`（多份候选名单交集，过滤单方案误判）
 - **部位特化**：`part_specialists`（按部位焦点 tag 的高收藏作品给画师排名）
 - **凭据**：`auth_status` / `save_credentials`（保存登录凭据解除匿名 tag 数限制）
@@ -96,6 +97,7 @@
 | `danbooru_similar_artists` | **相似画师（tag 画像 + 表情画像）**：由种子画师的「特色 tag」与「表情 tag 画像」找候选，再按表情 tag 频率余弦重排 | `artist`(必填)、`limit`、`profile_tags`、`min_shared`、`examples`、`expression_tags`、`expression_weight` |
 | `danbooru_artists_from_image` | **以图搜画师**：Agent 看图后给出 tag 分组，按分层优先级（人物→表情→绘制手法→线条→色彩→光照→tag；`mode="style"` 时手法/线条/色彩/光照优先）聚合画师 | `image_tags`(必填)、`person_tags`、`expression_tags`、`technique_tags`、`lineart_tags`、`color_tags`、`lighting_tags`、`mode`、`year`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_style_match` | **整体画风匹配（画风优先，角色可选）**：默认 `mode="style"` 不用角色 tag；`style_tags`（线/上色/色调/材质）为主证据，`body_tags`（体型/肤色/乳晕等身体细节画法）为次级证据——身份/外貌 tag（发色、瞳色、发型、服装、饰品、角色名）会被过滤并列入 `rejected_body_tags`。扫全站高分作品并做 `画风×画风 / 画风×身体细节 / 画风×题材` 配对，再按 `画师×锚点画风 tag` 核验并附例图；`mode="character"` 才用角色锚定。输出六项目视核对清单与 `prefer_artists`/`avoid_artists` 迭代接口。**小体量画师**：style-tag 共现（related_tag）通道会把低热度画师拉进候选（≥`min_artist_posts` 默认 50 帖），`small_artist_slots`（默认 3）为它们保留名额；`seed_artists` 可显式点名小画师（如 `eigaka`），强制纳入并按同款 style/genre 计算吻合度 | `mode`、`style_tags`、`body_tags`、`genre_tags`、`character`(仅 `mode="character"`)、`year`、`rating`、`limit`、`per_query`、`examples`、`prefer_artists`、`avoid_artists`、`verify_same_character`、`discover_small_artists`、`min_artist_posts`、`small_artist_slots`、`seed_artists`、`allow_rejected_artists`、`forget_artists`、`clear_rejections`、`anchor_pages`、`deep_scan_pages`、`pair_pages`、`cooccurrence_limit`、`cooccurrence_tags`、`subject_tags`(body_tags 的兼容别名) |
+| `danbooru_pixel_style_match` | **像素相似匹配（0.29.0，推荐用于以图找画师）**：给参考图（URL 或本地路径），插件用 tag 通道只**提名**候选画师，然后下载候选 1–3 张样图，用本地 Pillow 描述子（线条/边缘统计、明暗平滑度、色彩丰富度、饱和度、色相直方图）做**图对图**距离排序。身份/外貌 tag（发色、瞳色、服装、角色）完全不参与评分，避免「白毛图就找白毛画师」；需要 Python+Pillow（DSH 自带，可用 `DSH_PYTHON` 覆盖） | `reference_images`(必填)、`candidate_artists`、`style_tags`、`body_tags`、`genre_tags`、`pool_pages`、`cooccurrence_limit`、`pool_size`、`samples_per_artist`、`limit`、`rating`、`allow_rejected_artists` |
 | `danbooru_image_artist_consensus` | **多方案共识**：融合多个检索方案（style_match / artists_from_image / similar_artists）的候选名单，只保留被 ≥`min_hits` 个方案同时命中的画师，过滤单方案误判；无交集时返回部分重叠榜并标 `fallback_used=true` | `lists`(必填, JSON 数组)、`source_names`、`min_hits`、`limit`、`examples`、`example_tags`、`allow_no_face` |
 | `danbooru_part_specialists` | **部位特化搜索**：按部位焦点 tag（`hand_focus`/`foot_focus`/`thigh_focus`…）检索该部位高收藏作品，按收藏聚合画师排名，并返回部位高收藏图片 | `part`(必填)、`year`、`rating`、`artists_limit`、`posts_limit`、`sample`、`min_posts`、`rank_by`、`include_posts` |
 | `danbooru_get_post` | 单个作品：分类 tag 集 + 预览/大图/原图 URL | `id` |
@@ -296,6 +298,29 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 - 成本：每多一页 = 1 次请求（受串行限速）；`deep_scan_pages=50` 在 2 个 style tag 上约 100 次请求（约 1–2 分钟）
 - 诚实边界：**「99% 全站画师」需要把某 tag 的帖子全部翻完**（例如 shiny_skin 16 万帖 = 800 页，不现实）；`deep_scan_pages` 对中小 tag（几千～几万帖）基本能翻完，大 tag 只能覆盖高分/共现/点名三路
 
+### 像素相似匹配（0.29.0 起，推荐用于「以图找画师」）
+
+`danbooru_style_match` 的排序仍是 tag/热度启发式；要真正「按画面像不像」找画师，用 `danbooru_pixel_style_match`：
+
+- 输入 `reference_images`（逗号分隔 URL 或本地路径，1–8 张）→ tag 通道（`style_tags`/`body_tags`/`genre_tags` 或 `candidate_artists`）只负责**提名**候选池
+- 对每个候选画师抓 1–3 张样图，连同参考图一起下载到系统临时目录
+- 本地 Pillow 描述子提取 28 维特征：亮度统计、边缘/梯度强度与直方图、Laplacian 明暗平滑度、色彩丰富度、饱和度、饱和度加权色相直方图
+- 加权 L1 距离 = 图对图差异；`similarity = (1 - distance) × 100`，按相似度降序输出
+- **身份/外貌 tag 不参与任何评分**，所以不会再出现「给白毛图就找白毛画师」；但色相直方图仍会捕捉整体色调，这是画风的一部分
+- 需要 Python + Pillow：优先 `DSH_PYTHON`，其次 DSH 运行时自带 Python，最后 PATH 里的 `python`；找不到会明确报错，不会偷偷退回 tag 模式
+
+示例：
+
+```text
+danbooru_pixel_style_match(
+  reference_images="C:/Users/me/Pictures/ref1.png, C:/Users/me/Pictures/ref2.png",
+  style_tags="shiny_skin, sweat, lace, colored_lineart",
+  genre_tags="sex, cum, hetero",
+  pool_pages=3, pool_size=24, samples_per_artist=2, limit=8)
+```
+
+输出 `candidates[].similarity` / `distance` / `samples[]`（每张样图与参考图的距离）；池子来源与采样深度在 `pool` 里报告。
+
 ### 小体量画师发现（0.21.0 起，0.22.0 补 `seed_artists`）
 
 自动通道来自高分锚点/最新页与 style-tag 共现（`related_tag`）；不在这些采样池里的画师（如 `eigaka`：167 帖）可能被漏掉，直接用 `seed_artists` 点名即可纳入——候选不再受采样池限制。插件用 **style-tag 共现**把所有画这个手法的画师列出来，作为第三条通道：
@@ -402,7 +427,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.28.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.29.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -440,7 +465,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 65 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 66 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -461,6 +486,7 @@ node verify.mjs
 
 ## 更新记录
 
+- **0.29.0**：新增 **`danbooru_pixel_style_match`（像素相似匹配）**——不再用 tag 共现排序：tag 通道只提名候选画师，候选样图与参考图下载后由本地 Pillow 描述子（线条/边缘、明暗平滑度、色彩丰富度、饱和度、色相直方图）做图对图距离排序；身份/外貌 tag 完全不参与，解决「白毛图→白毛画师」问题；需要 Python+Pillow（`DSH_PYTHON` 可覆盖），15 个工具，`verify.mjs` 增加像素自检（共 66 项）
 - **0.28.0**：删除客户端候选池上限，新增**采样深度控制**——`anchor_pages`（默认 400 篇/tag）、`deep_scan_pages`（默认 0，最大 500 页 = 10 万篇，可把中小 tag 的画师基本翻完）、`pair_pages`、`cooccurrence_limit`（默认 200 = API 上限）、`cooccurrence_tags`；输出 `pool_stats` 报告实际池子；诚实说明 99% 全站覆盖需翻完大 tag（不可行），`deep_scan_pages` 覆盖中小 tag；`verify.mjs` 增加宽池自检（共 65 项）
 - **0.27.2**：删除「检索器只能在高分/热榜/共现前 100 里筛选」的旧限制描述——自动通道仍按高分/热榜/共现采样，但 `seed_artists` 可点名纳入任意画师，候选不再受采样池限制；工具参数说明、输出 note 与 README 同步
 - **0.27.1**：更新插件介绍——DSH 描述、`package.json` 描述与 README 开头同步为当前 14 个工具与能力（画风优先匹配、小体量画师、`seed_artists`、拒绝记忆、多方案共识、服装材质效果、身份特征过滤、单维度降权等）；清理旧版本安装包与调试用对比图

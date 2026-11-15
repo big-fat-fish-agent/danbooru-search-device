@@ -40,7 +40,7 @@ function check(label, condition, detail) {
   }
 }
 
-check('registers fourteen tools', registered.size === 14, `registered=${[...registered.keys()].join(', ')}`)
+check('registers fifteen tools', registered.size === 15, `registered=${[...registered.keys()].join(', ')}`)
 const status = await call('danbooru_auth_status')
 check('auth_status reports unconfigured without a credentials service', status.configured === false && status.login.configured === false, JSON.stringify(status))
 let saveRefused = false
@@ -172,6 +172,14 @@ const styleMatchWide = await call('danbooru_style_match', {
   deep_scan_pages: 6,
 })
 check('style match deep-scans a wider candidate pool', styleMatchWide.pool_stats?.anchor_pages === 3 && styleMatchWide.pool_stats?.deep_scan_pages === 6 && styleMatchWide.anchor_scans.every((row) => row.pages === 6) && styleMatchWide.pool_stats.anchor_posts_scanned > 200 && styleMatchWide.pool_stats.unique_artists_seen > 0, JSON.stringify(styleMatchWide.pool_stats))
+
+const pixelMatch = await call('danbooru_pixel_style_match', {
+  reference_images: 'https://cdn.donmai.us/sample/fe/8c/sample-fe8ce3a3785d35e161074779a433c0e2.jpg',
+  candidate_artists: 'hews,ohisashiburi',
+  limit: 2,
+  samples_per_artist: 1,
+})
+check('pixel match ranks artists by visual similarity', pixelMatch.candidates.length > 0 && pixelMatch.candidates.every((candidate) => typeof candidate.similarity === 'number' && candidate.samples.length > 0) && pixelMatch.candidates.every((candidate, index, all) => index === 0 || all[index - 1].similarity >= candidate.similarity), JSON.stringify(pixelMatch.candidates?.map((candidate) => [candidate.name, candidate.similarity])))
 
 // Rejection memory: remembered rejects are filtered from AUTOMATIC discovery, but explicitly
 // naming one again (seed_artists) reinstates it — the memory is not a permanent block.

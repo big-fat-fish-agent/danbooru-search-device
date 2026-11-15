@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.28.0'
+const VERSION = '0.29.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -536,6 +536,89 @@ function mapPost(post) {
   }
 }
 
+/** Pillow descriptor for pixel style matching: 28 numbers per image (luminance statistics,
+ * edge/gradient strength and histogram, shading/Laplacian energy, colourfulness, saturation and
+ * a saturation-weighted hue histogram). Executed only when pixel mode is used; the JS side stays
+ * dependency-free. */
+const PIXEL_PY_SCRIPT = String.raw`
+import json, sys
+from PIL import Image
+
+SIDE = 128
+
+def features(path):
+    im = Image.open(path).convert('RGB')
+    im = im.resize((SIDE, SIDE), Image.BILINEAR)
+    pix = list(im.getdata())
+    n = len(pix)
+    gray = [0.299 * r + 0.587 * g + 0.114 * b for (r, g, b) in pix]
+    lum_mean = sum(gray) / n / 255.0
+    lum_std = (sum((v - lum_mean * 255.0) ** 2 for v in gray) / n) ** 0.5 / 255.0
+
+    grad_sum = 0.0
+    edge_count = 0
+    hist = [0] * 8
+    lap_sum = 0.0
+    for y in range(1, SIDE - 1):
+        row = y * SIDE
+        for x in range(1, SIDE - 1):
+            i = row + x
+            gx = gray[i - SIDE + 1] - gray[i - SIDE - 1] + 2 * (gray[i + 1] - gray[i - 1])
+            gy = gray[i + SIDE - 1] - gray[i - SIDE - 1] + 2 * (gray[i + SIDE] - gray[i - SIDE])
+            m = abs(gx) + abs(gy)
+            grad_sum += m
+            if m > 40:
+                edge_count += 1
+            hist[min(7, int(m / 128.0))] += 1
+            lap_sum += abs(4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - SIDE] - gray[i + SIDE])
+    cells = (SIDE - 2) * (SIDE - 2)
+    grad_mean = min(1.0, grad_sum / cells / 255.0)
+    edge_ratio = edge_count / cells
+    lap_mean = min(1.0, lap_sum / cells / 255.0)
+    total = sum(hist) or 1
+    grad_hist = [h / total for h in hist]
+
+    rg = [r - g for (r, g, b) in pix]
+    yb = [0.5 * (r + g) - b for (r, g, b) in pix]
+    rg_mean = sum(rg) / n
+    yb_mean = sum(yb) / n
+    rg_std = (sum((v - rg_mean) ** 2 for v in rg) / n) ** 0.5
+    yb_std = (sum((v - yb_mean) ** 2 for v in yb) / n) ** 0.5
+    colorfulness = min(1.0, (((rg_std ** 2 + yb_std ** 2) ** 0.5) + 0.3 * ((rg_mean ** 2 + yb_mean ** 2) ** 0.5)) / 255.0)
+
+    sat_total = 0.0
+    sat_sq = 0.0
+    hue_hist = [0.0] * 12
+    for (r, g, b) in pix:
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        s = 0.0 if mx == 0 else (mx - mn) / mx
+        sat_total += s
+        sat_sq += s * s
+        if s > 0.15 and mx > mn:
+            if mx == r:
+                h = (60.0 * ((g - b) / (mx - mn))) % 360.0
+            elif mx == g:
+                h = 60.0 * ((b - r) / (mx - mn)) + 120.0
+            else:
+                h = 60.0 * ((r - g) / (mx - mn)) + 240.0
+            hue_hist[int(h // 30) % 12] += s
+    sat_mean = sat_total / n
+    sat_std = max(0.0, sat_sq / n - sat_mean * sat_mean) ** 0.5
+    hue_total = sum(hue_hist) or 1.0
+    hue_hist = [h / hue_total for h in hue_hist]
+
+    return [round(lum_mean, 4), round(lum_std, 4), round(grad_mean, 4), round(edge_ratio, 4), round(lap_mean, 4), round(colorfulness, 4), round(sat_mean, 4), round(sat_std, 4)] + [round(v, 4) for v in grad_hist] + [round(v, 4) for v in hue_hist]
+
+out = []
+for path in sys.argv[1:]:
+    try:
+        out.append(features(path))
+    except Exception as exc:
+        out.append({'error': str(exc)})
+print(json.dumps(out))
+`
+
 const output = {
   schema: { type: 'object', additionalProperties: true },
   render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -559,6 +642,137 @@ export function apply(ctx, rawConfig = {}) {
   }
   const client = createClient(config, credentials)
   const { request } = client
+
+  // --- Pixel-similarity matching -------------------------------------------
+  // Danbooru has no image-embedding API, so pixel mode runs locally: reference and candidate
+  // images are downloaded to a temp dir and turned into a style-oriented descriptor by a
+  // bundled Python/Pillow helper (edge/line statistics, shading smoothness, colourfulness,
+  // saturation and hue distribution). Tag channels are used only to build the candidate artist
+  // pool; the final ranking is image-to-image so identity/appearance tags cannot drive it.
+  // Pixel mode needs Python with Pillow (DSH ships one); it fails with a clear hint otherwise
+  // instead of silently falling back to tag co-occurrence.
+  const PIXEL_WEIGHTS = {
+    scalar: [0.06, 0.08, 0.10, 0.07, 0.13, 0.09, 0.07, 0.05],
+    gradient: 0.19,
+    hue: 0.16,
+  }
+  const PIXEL_UA = `dsh-danbooru-tools/${VERSION} (pixel style match)`
+  const pixelFeatureCache = new Map()
+  let pixelPython
+
+  const pixelExec = async (command, args, options = {}) => {
+    const { execFile } = await import('node:child_process')
+    return await new Promise((resolve, reject) => {
+      execFile(command, args, options, (error, stdout, stderr) => {
+        if (error) reject(new Error(`${error.message}${stderr ? `: ${String(stderr).slice(0, 300)}` : ''}`))
+        else resolve(stdout)
+      })
+    })
+  }
+
+  /** Locate a Python that can import Pillow: DSH_PYTHON first, then the DSH runtime, then PATH. */
+  async function resolvePixelPython() {
+    if (pixelPython !== undefined) return pixelPython
+    let fs
+    let os
+    let path
+    try {
+      ;[fs, os, path] = await Promise.all([import('node:fs'), import('node:os'), import('node:path')])
+    } catch {
+      pixelPython = null
+      return pixelPython
+    }
+    const candidates = []
+    if (process.env.DSH_PYTHON) candidates.push(process.env.DSH_PYTHON)
+    try {
+      const runtimes = path.join(os.homedir(), '.dsh', 'dsh-runtimes')
+      if (fs.existsSync(runtimes)) {
+        for (const dir of fs.readdirSync(runtimes)) {
+          candidates.push(path.join(runtimes, dir, 'dependencies', 'python', 'python.exe'))
+          candidates.push(path.join(runtimes, dir, 'dependencies', 'python', 'bin', 'python3'))
+          candidates.push(path.join(runtimes, dir, 'dependencies', 'python', 'python'))
+        }
+      }
+    } catch {
+      // Runtime discovery is best-effort; PATH fallbacks below still apply.
+    }
+    candidates.push('python', 'python3', 'py')
+    for (const candidate of candidates) {
+      try {
+        await pixelExec(candidate, ['-c', 'from PIL import Image; print("pillow-ok")'], { timeout: 20000 })
+        pixelPython = candidate
+        return candidate
+      } catch {
+        // Try the next interpreter.
+      }
+    }
+    pixelPython = null
+    return null
+  }
+
+  /** Download a remote image (or accept a local path) into the temp working directory. */
+  async function fetchPixelImage(url, dir, index) {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    if (!/^https?:\/\//i.test(url)) {
+      if (!fs.existsSync(url)) throw new Error(`reference image not found: ${url}`)
+      return { path: url, remote: false }
+    }
+    const response = await fetch(url, { headers: { 'User-Agent': PIXEL_UA, Referer: `${ORIGIN}/`, Accept: 'image/*' } })
+    if (!response.ok) throw new Error(`image download failed for ${url}: HTTP ${response.status}`)
+    const bytes = Buffer.from(await response.arrayBuffer())
+    const extension = (url.split('?')[0].match(/\.(jpe?g|png|webp|gif)$/i) ?? [null, 'jpg'])[1].toLowerCase()
+    const file = path.join(dir, `img-${String(index).padStart(3, '0')}.${extension}`)
+    fs.writeFileSync(file, bytes)
+    return { path: file, remote: true }
+  }
+
+  /** Run the Pillow descriptor over the given files (one JSON array result, one entry per file). */
+  async function computePixelFeatures(filePaths) {
+    const cached = filePaths.map((filePath) => pixelFeatureCache.get(filePath))
+    if (cached.every(Boolean)) return cached
+    const python = await resolvePixelPython()
+    if (!python) throw new Error('pixel mode unavailable: no Python with Pillow found (set DSH_PYTHON to a python interpreter that can `from PIL import Image`)')
+    const stdout = await pixelExec(python, ['-c', PIXEL_PY_SCRIPT, ...filePaths], { timeout: 240000, maxBuffer: 32 * 1024 * 1024 })
+    const parsed = JSON.parse(String(stdout).trim())
+    if (!Array.isArray(parsed) || parsed.length !== filePaths.length) throw new Error('pixel helper returned an unexpected result')
+    parsed.forEach((features, index) => {
+      if (features && !features.error) pixelFeatureCache.set(filePaths[index], features)
+    })
+    return parsed
+  }
+
+  /** Weighted L1 distance between two descriptor vectors (0 = identical look). */
+  function pixelDistance(left, right) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return 1
+    const weights = [
+      ...PIXEL_WEIGHTS.scalar,
+      ...Array(8).fill(PIXEL_WEIGHTS.gradient / 8),
+      ...Array(12).fill(PIXEL_WEIGHTS.hue / 12),
+    ]
+    let total = 0
+    let weightSum = 0
+    for (let index = 0; index < weights.length; index += 1) {
+      total += weights[index] * Math.abs(Number(left[index] ?? 0) - Number(right[index] ?? 0))
+      weightSum += weights[index]
+    }
+    return weightSum > 0 ? total / weightSum : 1
+  }
+
+  /** Run async tasks with a small concurrency cap (image downloads are the slow part). */
+  async function mapWithConcurrency(items, limit, task) {
+    const results = new Array(items.length)
+    let cursor = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor
+        cursor += 1
+        results[index] = await task(items[index], index)
+      }
+    })
+    await Promise.all(workers)
+    return results
+  }
 
   /** Report configuration state without exposing any value. */
   const authStatus = async () => {
@@ -587,6 +801,202 @@ export function apply(ctx, rawConfig = {}) {
   }
 
   const tools = [
+  {
+    name: 'danbooru_pixel_style_match',
+    description: 'Pixel-similarity style matching: ranks artist candidates by how their actual images look, not by tag co-occurrence. Give it one or more reference images (URLs or local paths; these are the images the user attached) and it builds a candidate artist pool from tags or an explicit list, downloads 1-3 sample images per artist plus the references, and compares them with a local Pillow descriptor (line/edge statistics, shading smoothness, colourfulness, saturation, hue distribution). Identity/appearance tags never score: the ranking is image-to-image, so "white-haired image → artists who draw white hair" cannot be produced by tag frequency. Pool parameters mirror danbooru_style_match (style_tags/body_tags/genre_tags, pool_pages, cooccurrence_limit) but the tag channels only nominate candidates. Requires Python with Pillow (DSH ships one; override with DSH_PYTHON). Set candidate_artists to skip pool building and compare exactly those artists.',
+    parameters: parameters({
+      reference_images: { type: 'string', description: 'Required. Comma-separated reference image URLs or local file paths (1-8). These are compared pixel-wise against each candidate\'s sample images.' },
+      candidate_artists: { type: 'string', description: 'Optional comma-separated artist tags to compare directly (skips the tag pool; use it to test a shortlist or a user-named artist).' },
+      style_tags: { type: 'string', description: 'Pool seeding only: rendering/technique tags used to nominate candidate artists, e.g. "shiny_skin, sweat, lace, colored_lineart".' },
+      body_tags: { type: 'string', description: 'Pool seeding only: body/detail treatment tags (body build, skin shading, areolae, proportions), e.g. "huge_breasts, dark_nipples, thick_thighs".' },
+      genre_tags: { type: 'string', description: 'Pool seeding only: scene/act tags, e.g. "sex, cum, hetero".' },
+      pool_pages: { type: 'integer', minimum: 1, maximum: 10, description: 'Top-scored pages of 200 posts sampled per pool anchor tag (default 2 = up to 400 posts). Wider pool = more artists to compare = more requests.' },
+      cooccurrence_limit: { type: 'integer', minimum: 50, maximum: 200, description: 'Artists pulled from the related_tag co-occurrence pass per style tag (default 200 = API max). Used for pool seeding only.' },
+      pool_size: { type: 'integer', minimum: 1, maximum: 48, description: 'Candidate artists to compare pixel-wise (default max(limit*3, 12)). Each costs one posts request plus 1-3 image downloads.' },
+      samples_per_artist: { type: 'integer', minimum: 1, maximum: 3, description: 'Sample images per artist (default 2). More samples = more downloads but a fairer judgement of the artist\'s range.' },
+      limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Artists to return (default 8).' },
+      rating: { type: 'string', enum: ['g', 's', 'q', 'e', 'all'], description: 'Rating filter for sample posts (default all, R18 included).' },
+      allow_rejected_artists: { type: 'boolean', description: 'Ignore the remembered rejection list for this call only. Rejected artists are otherwise filtered from the result like the other artist tools.' },
+    }, ['reference_images']),
+    output,
+    async execute(args, exec) {
+      const refs = String(args?.reference_images ?? '').split(/\s*,\s*/).map((value) => value.trim()).filter(Boolean)
+      if (refs.length === 0) throw new Error('reference_images is required: comma-separated image URLs or local file paths')
+      if (refs.length > 8) throw new Error('reference_images accepts at most 8 images')
+      const limit = clamp(args?.limit, 1, 25, 8)
+      const samplesPerArtist = clamp(args?.samples_per_artist, 1, 3, 2)
+      const poolPages = clamp(args?.pool_pages, 1, 10, 2)
+      const cooccurrenceLimit = clamp(args?.cooccurrence_limit, 50, 200, 200)
+      const poolSize = clamp(args?.pool_size, 1, 48, Math.max(limit * 3, 12))
+      const styleTags = parseTagList(args?.style_tags)
+      const bodyTags = parseTagList(args?.body_tags)
+      const genreTags = parseTagList(args?.genre_tags)
+      const keyOf = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_')
+      const explicitArtists = [...new Set(parseTagList(args?.candidate_artists).map(keyOf).filter(Boolean))]
+      const rating = ['g', 's', 'q', 'e'].includes(args?.rating) ? args.rating : 'all'
+      const allowRejected = args?.allow_rejected_artists === true
+
+      // 1) Candidate pool. Tag channels only nominate artists; they never rank them.
+      const poolScore = new Map()
+      const poolScans = []
+      if (explicitArtists.length > 0) {
+        explicitArtists.forEach((name, index) => poolScore.set(name, 1000 - index))
+      } else {
+        const anchorTags = [...new Set([styleTags[0], styleTags[1], styleTags.length === 0 ? (bodyTags[0] ?? genreTags[0]) : null].filter(Boolean))].slice(0, 2)
+        if (anchorTags.length === 0) throw new Error('pass candidate_artists, or style_tags / body_tags / genre_tags to build the candidate pool')
+        for (const tag of anchorTags) {
+          for (let page = 1; page <= poolPages; page += 1) {
+            let rows
+            try {
+              rows = await request('/posts.json', { tags: `${tag} order:score`, limit: 200, page }, { signal: exec?.signal, ttlMs: TTL.posts })
+            } catch {
+              break
+            }
+            rows = onlyImages(Array.isArray(rows) ? rows : [])
+            if (rows.length === 0) break
+            for (const post of rows) {
+              if (rating !== 'all' && post.rating !== rating) continue
+              for (const name of splitTags(post.tag_string_artist).filter(isIllustratorTag)) {
+                poolScore.set(name, (poolScore.get(name) ?? 0) + 2)
+              }
+            }
+            poolScans.push({ tags: tag, page, sampled: rows.length })
+          }
+        }
+        for (const tag of styleTags.slice(0, 3)) {
+          try {
+            const data = await request('/related_tag.json', { query: tag, category: CATEGORY_IDS.artist, limit: cooccurrenceLimit }, { signal: exec?.signal, ttlMs: TTL.related })
+            for (const row of Array.isArray(data?.related_tags) ? data.related_tags : []) {
+              const name = String(row?.tag?.name ?? '')
+              const posts = Number(row?.tag?.post_count ?? 0)
+              if (!name || posts < 50) continue
+              poolScore.set(name, (poolScore.get(name) ?? 0) + Number(row.frequency ?? 0) * 100)
+            }
+          } catch {
+            // Co-occurrence is a pool source only; a failure must not block pixel matching.
+          }
+        }
+      }
+      const artistPool = [...poolScore.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .map(([name]) => name)
+        .slice(0, poolSize)
+      if (artistPool.length === 0) throw new Error('no candidate artists found for pixel matching; pass candidate_artists or broader style tags')
+
+      // 2) Sample images per artist (deduped by edit cluster; the largest available file).
+      const sampleEntries = []
+      for (const name of artistPool) {
+        let rows = []
+        try {
+          rows = await request('/posts.json', { tags: `${name} order:score`, limit: Math.min(100, samplesPerArtist * 6) }, { signal: exec?.signal, ttlMs: TTL.posts })
+        } catch {
+          rows = []
+        }
+        const posts = dedupeByCluster((Array.isArray(rows) ? rows : [])
+          .filter((post) => !isVideoPost(post) && (post.large_file_url || post.file_url || post.preview_file_url))
+          .filter((post) => rating === 'all' || post.rating === rating)
+          .map((post) => ({ post }))).slice(0, samplesPerArtist)
+        for (const row of posts) {
+          sampleEntries.push({
+            artist: name,
+            post: row.post,
+            url: row.post.large_file_url ?? row.post.file_url ?? row.post.preview_file_url,
+          })
+        }
+      }
+      if (sampleEntries.length === 0) throw new Error('no downloadable sample posts found for the candidate pool')
+
+      // 3) Download the references and samples, describe them, and rank artists image-to-image.
+      const fs = await import('node:fs')
+      const os = await import('node:os')
+      const path = await import('node:path')
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pixel-'))
+      try {
+        const jobs = [
+          ...refs.map((url) => ({ kind: 'reference', url })),
+          ...sampleEntries.map((entry) => ({ kind: 'sample', url: entry.url, entry })),
+        ]
+        const files = await mapWithConcurrency(jobs, 6, async (job, index) => {
+          try {
+            return await fetchPixelImage(job.url, tmpDir, index)
+          } catch (error) {
+            return { error: error.message, path: null }
+          }
+        })
+        const downloadable = files.filter((file) => file.path)
+        if (downloadable.length === 0) throw new Error('could not download any image; check the reference URLs')
+        const featureRows = await computePixelFeatures(downloadable.map((file) => file.path))
+        const featureByPath = new Map(downloadable.map((file, index) => [file.path, featureRows[index]]))
+        const refFeatures = []
+        const sampleResults = []
+        jobs.forEach((job, index) => {
+          const vector = files[index]?.path ? featureByPath.get(files[index].path) : null
+          if (!Array.isArray(vector)) return
+          if (job.kind === 'reference') {
+            refFeatures.push(vector)
+          } else {
+            sampleResults.push({
+              artist: job.entry.artist,
+              post: job.entry.post,
+              url: job.entry.url,
+              distance: null,
+              vector,
+            })
+          }
+        })
+        if (refFeatures.length === 0) throw new Error('could not decode any reference image (supports jpg/png/webp/gif)')
+        for (const sample of sampleResults) {
+          sample.distance = Math.min(...refFeatures.map((ref) => pixelDistance(ref, sample.vector)))
+        }
+        const byArtist = new Map()
+        for (const sample of sampleResults) {
+          const current = byArtist.get(sample.artist) ?? { distance: 1, samples: [] }
+          current.samples.push(sample)
+          current.distance = Math.min(current.distance, sample.distance)
+          byArtist.set(sample.artist, current)
+        }
+        const candidates = [...byArtist.entries()]
+          .map(([name, info]) => {
+            const best = [...info.samples].sort((left, right) => left.distance - right.distance).slice(0, samplesPerArtist)
+            return {
+              name,
+              artist_url: artistPostsUrl(name),
+              similarity: round((1 - Math.min(1, info.distance)) * 100, 1),
+              distance: round(info.distance, 4),
+              samples: best.map((sample) => ({
+                post_id: sample.post.id,
+                post_url: `${ORIGIN}/posts/${sample.post.id}`,
+                sample_url: sample.url,
+                rating: sample.post.rating ?? null,
+                distance: round(sample.distance, 4),
+              })),
+            }
+          })
+          .sort((left, right) => right.similarity - left.similarity || left.name.localeCompare(right.name))
+        const filtered = filterRejectedArtists(candidates)
+        return toLossless({
+          method: 'pixel style descriptor (edge/line statistics, shading smoothness, colourfulness, saturation, hue histogram)',
+          reference_images: refs.length,
+          pool: {
+            scans: poolScans,
+            cooccurrence_limit: cooccurrenceLimit,
+            artists_in_pool: artistPool.length,
+            samples_downloaded: sampleResults.length,
+          },
+          candidates: filtered.kept.slice(0, limit),
+          rejected_excluded: filtered.excluded,
+          note: 'Ranking is image-to-image so identity tags (hair colour, eyes, costume, character) cannot drive it; tag channels only nominate the candidate pool. The descriptor compares line/edge texture, shading smoothness, colourfulness, saturation and hue distribution — it is a heuristic, not a neural embedding: confirm the top artists visually. Requires Python+Pillow (DSH_PYTHON overrides discovery).',
+        })
+      } finally {
+        try {
+          fs.rmSync(tmpDir, { recursive: true, force: true })
+        } catch {
+          // Temp files are in the OS temp dir; cleanup failure must not fail the tool.
+        }
+      }
+    },
+  },
+
     {
       name: 'danbooru_search_posts',
       description: 'Search Danbooru posts by tag query and return prompt-ready tag sets plus image URLs. Read-only public API; anonymous searches accept two tags, DANBOORU_LOGIN plus DANBOORU_API_KEY raise that. The default rating filter is general; pass rating=all to disable it. Pass year to only see posts published in that calendar year.',
