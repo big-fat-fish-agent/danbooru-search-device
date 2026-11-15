@@ -163,6 +163,16 @@ const styleMatchSeed = await call('danbooru_style_match', {
 })
 check('style match forces explicit seed artists into the result', styleMatchSeed.candidates.some((candidate) => candidate.name === 'eigaka' && candidate.seed_artist === true && typeof candidate.artist_posts === 'number' && candidate.artist_posts >= 50), JSON.stringify(styleMatchSeed.seed_artists))
 
+const styleMatchWide = await call('danbooru_style_match', {
+  style_tags: 'shiny_skin',
+  limit: 4,
+  examples: 0,
+  verify_same_character: false,
+  anchor_pages: 3,
+  deep_scan_pages: 6,
+})
+check('style match deep-scans a wider candidate pool', styleMatchWide.pool_stats?.anchor_pages === 3 && styleMatchWide.pool_stats?.deep_scan_pages === 6 && styleMatchWide.anchor_scans.every((row) => row.pages === 6) && styleMatchWide.pool_stats.anchor_posts_scanned > 200 && styleMatchWide.pool_stats.unique_artists_seen > 0, JSON.stringify(styleMatchWide.pool_stats))
+
 // Rejection memory: remembered rejects are filtered from AUTOMATIC discovery, but explicitly
 // naming one again (seed_artists) reinstates it — the memory is not a permanent block.
 await call('danbooru_style_match', { style_tags: 'shiny_skin', avoid_artists: 'hews', limit: 3, examples: 0, verify_same_character: false })

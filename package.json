@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-danbooru-tools",
-  "version": "0.27.2",
+  "version": "0.28.0",
   "private": true,
   "type": "module",
   "description": "DSH bundle (not a standalone program) — AI-made, read-only, image-only Danbooru tools (14 tools): post/tag search, tag details and wiki, related tags; year-favorites artist ranking with body-shape gate + skin/color references; Hot/rising weighted sampling; similar artists (tag + expression profiles); layered image-to-artist search with identity-tag filtering, single-dimension demotion and variant clustering; style-first whole-look matching with small-artist discovery, seed_artists reinstatement and persistent rejection memory; multi-scheme consensus; body-part specialists. Video/ugoira and 3D renders are filtered or downweighted.",
