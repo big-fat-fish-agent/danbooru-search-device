@@ -24,7 +24,7 @@
  *   DANBOORU_API_KEY     Danbooru API key from the user's profile page.
  *   DANBOORU_USER_AGENT  Full User-Agent override (keep it descriptive).
  */
-const VERSION = '0.33.0'
+const VERSION = '0.34.0'
 const ORIGIN = 'https://danbooru.donmai.us'
 
 /** Artist posts page; when a year is known the query includes that year's date range. */
@@ -825,6 +825,21 @@ export function apply(ctx, rawConfig = {}) {
     return null
   }
 
+  /** Accept a direct image URL, a Danbooru post URL (`/posts/<id>`) or a local file path, and
+   * return a direct image URL. Post URLs are resolved through the API so users can paste the page
+   * they are looking at instead of hunting for the CDN link. */
+  async function resolvePixelReference(url, signal) {
+    const match = String(url ?? '').trim().match(/^https?:\/\/(?:www\.)?danbooru\.donmai\.us\/posts\/(\d+)(?:[/?#].*)?$/i)
+    if (!match) return url
+    const rows = await request('/posts.json', { tags: `id:${match[1]}`, limit: 1 }, { signal, ttlMs: TTL.posts })
+    const post = Array.isArray(rows) ? rows[0] : null
+    if (!post) throw new Error(`Danbooru post ${match[1]} not found (deleted or private?)`)
+    if (isVideoPost(post)) throw new Error(`Danbooru post ${match[1]} is a video/ugoira; pixel mode only accepts still images`)
+    const resolved = post.large_file_url ?? post.file_url ?? post.preview_file_url
+    if (!resolved) throw new Error(`Danbooru post ${match[1]} has no downloadable image URL`)
+    return resolved
+  }
+
   /** Download a remote image (or accept a local path) into the temp working directory. */
   async function fetchPixelImage(url, dir, index) {
     const fs = await import('node:fs')
@@ -835,6 +850,10 @@ export function apply(ctx, rawConfig = {}) {
     }
     const response = await fetch(url, { headers: { 'User-Agent': PIXEL_UA, Referer: `${ORIGIN}/`, Accept: 'image/*' } })
     if (!response.ok) throw new Error(`image download failed for ${url}: HTTP ${response.status}`)
+    const contentType = String(response.headers.get('content-type') ?? '').toLowerCase()
+    if (contentType && !contentType.startsWith('image/')) {
+      throw new Error(`reference URL is not an image (content-type ${contentType}); pass a direct image URL or a Danbooru post URL`)
+    }
     const bytes = Buffer.from(await response.arrayBuffer())
     const extension = (url.split('?')[0].match(/\.(jpe?g|png|webp|gif)$/i) ?? [null, 'jpg'])[1].toLowerCase()
     const file = path.join(dir, `img-${String(index).padStart(3, '0')}.${extension}`)
@@ -920,7 +939,7 @@ export function apply(ctx, rawConfig = {}) {
     name: 'danbooru_pixel_style_match',
     description: 'Pixel-similarity style matching: ranks artist candidates by how their actual images look, not by tag co-occurrence. Give it one or more reference images (URLs or local paths; these are the images the user attached) and it builds a candidate artist pool from tags or an explicit list, downloads 1-3 sample images per artist plus the references, and compares them with a local Pillow descriptor (line/edge statistics, shading smoothness, colourfulness, saturation, hue distribution). Identity/appearance tags never score: the ranking is image-to-image, so "white-haired image → artists who draw white hair" cannot be produced by tag frequency. Pool parameters mirror danbooru_style_match (style_tags/body_tags/genre_tags, pool_pages, cooccurrence_limit) but the tag channels only nominate candidates. Requires Python with Pillow (DSH ships one; override with DSH_PYTHON). Set candidate_artists to skip pool building and compare exactly those artists.',
     parameters: parameters({
-      reference_images: { type: 'string', description: 'Required. Comma-separated reference image URLs or local file paths (1-8). These are compared pixel-wise against each candidate\'s sample images.' },
+      reference_images: { type: 'string', description: 'Required. Comma-separated reference images: direct image URLs, Danbooru post URLs (e.g. https://danbooru.donmai.us/posts/123456, resolved via the API) or local file paths (1-8). These are compared pixel-wise against each candidate\'s sample images.' },
       candidate_artists: { type: 'string', description: 'Optional comma-separated artist tags to compare directly (skips the tag pool; use it to test a shortlist or a user-named artist).' },
       style_tags: { type: 'string', description: 'Pool seeding only: rendering/technique tags used to nominate candidate artists, e.g. "shiny_skin, sweat, lace, colored_lineart".' },
       body_tags: { type: 'string', description: 'Pool seeding only: body/detail treatment tags (body build, skin shading, areolae, proportions), e.g. "huge_breasts, dark_nipples, thick_thighs".' },
@@ -1041,8 +1060,9 @@ export function apply(ctx, rawConfig = {}) {
       const path = await import('node:path')
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pixel-'))
       try {
+        const resolvedRefs = await Promise.all(refs.map((url) => resolvePixelReference(url, exec?.signal)))
         const jobs = [
-          ...refs.map((url) => ({ kind: 'reference', url })),
+          ...resolvedRefs.map((url) => ({ kind: 'reference', url })),
           ...sampleEntries.map((entry) => ({ kind: 'sample', url: entry.url, entry })),
         ]
         const files = await mapWithConcurrency(jobs, 6, async (job, index) => {

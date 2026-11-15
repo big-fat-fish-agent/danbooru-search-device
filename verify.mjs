@@ -221,6 +221,15 @@ const pixelMatch = await call('danbooru_pixel_style_match', {
 })
 check('pixel match ranks artists by visual similarity', pixelMatch.candidates.length > 0 && pixelMatch.candidates.every((candidate) => typeof candidate.similarity === 'number' && candidate.samples.length > 0) && pixelMatch.candidates.every((candidate, index, all) => index === 0 || all[index - 1].similarity >= candidate.similarity), JSON.stringify(pixelMatch.candidates?.map((candidate) => [candidate.name, candidate.similarity])))
 
+const pixelPostRef = await call('danbooru_pixel_style_match', {
+  reference_images: 'https://danbooru.donmai.us/posts/11172979',
+  candidate_artists: 'hews',
+  limit: 1,
+  samples_per_artist: 1,
+  year_check: false,
+})
+check('pixel match accepts a Danbooru post URL as reference', pixelPostRef.candidates?.length === 1 && pixelPostRef.candidates[0].similarity > 0 && pixelPostRef.candidates[0].samples.length > 0, JSON.stringify(pixelPostRef.candidates?.[0] ? [pixelPostRef.candidates[0].name, pixelPostRef.candidates[0].similarity] : pixelPostRef))
+
 const pixelYear = await call('danbooru_pixel_style_match', {
   reference_images: 'https://cdn.donmai.us/sample/fe/8c/sample-fe8ce3a3785d35e161074779a433c0e2.jpg',
   candidate_artists: 'hews',

@@ -345,7 +345,7 @@ D 站没有独立的「年份表」，年份过滤用的是 `date:` 元标签：
 
 `danbooru_style_match` 的排序仍是 tag/热度启发式；要真正「按画面像不像」找画师，用 `danbooru_pixel_style_match`：
 
-- 输入 `reference_images`（逗号分隔 URL 或本地路径，1–8 张）→ tag 通道（`style_tags`/`body_tags`/`genre_tags` 或 `candidate_artists`）只负责**提名**候选池
+- 输入 `reference_images`（逗号分隔，1–8 张）支持三种形式：**直接图片 URL**（`cdn.donmai.us/...jpg`）、**D 站帖子 URL**（`danbooru.donmai.us/posts/<id>`，插件经 API 解析为原图；视频/ugoira 帖子明确报错）、**本地文件路径**（聊天里发来的图） → tag 通道（`style_tags`/`body_tags`/`genre_tags` 或 `candidate_artists`）只负责**提名**候选池
 - 对每个候选画师抓 1–3 张样图，连同参考图一起下载到系统临时目录
 - 本地 Pillow 描述子提取 28 维特征：亮度统计、边缘/梯度强度与直方图、Laplacian 明暗平滑度、色彩丰富度、饱和度、饱和度加权色相直方图
 - 加权 L1 距离 = 图对图差异；`similarity = (1 - distance) × 100`，按相似度降序输出
@@ -481,7 +481,7 @@ danbooru_image_artist_consensus(
 
 ## 合规与限速（内建）
 
-- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.33.0 (DeepSeek Harness; <contact>)`。
+- 每个请求都带可识别 `User-Agent`：`dsh-danbooru-tools/0.34.0 (DeepSeek Harness; <contact>)`。
 - 所有请求走**单一串行闸门**：匿名默认间隔 1.1 秒；检测到已保存凭据时自动切成 0.4 秒（约 2.5 次/秒，仍只有 D 站 10 次/秒上限的 1/4，多请求工具整体快约 2–2.7 倍）；遇到 429 会按 `Retry-After` 退避重试一次。
 - 结果有内存 TTL 缓存（作品 5 分钟 / 自动补全 6 小时 / 相关 tag 1 小时 / wiki 24 小时），减少重复请求。
 - **对 Danbooru 只读**：只发 GET 请求，不点赞、不收藏、不上传、不写 profile；不产生任何对站点的写入。
@@ -519,7 +519,7 @@ danbooru_image_artist_consensus(
 node verify.mjs
 ```
 
-会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 81 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
+会真实请求各查询工具（工具注册、凭据降级、年份过滤、三级加权、整年总收藏、风格闸门、人体附加参考、整体色调参考、表情画像与余弦、例图软规则、部位特化、线条/手法/服装材质效果权重、角色身份过滤、单维度降权、整体画风匹配的锚点/同角色/清单、画风优先忽略身份外貌但保留身体细节、小体量画师共现与 seed 点名、多方案共识等 82 项检查）并校验返回结构与排序，约 3–5 分钟（受串行限速影响）。不产生写入。
 
 ## 已知限制
 
@@ -540,7 +540,7 @@ node verify.mjs
 
 ## 更新记录
 
-- **0.34.0**：`danbooru_artists_from_image` 修正「全局排名截断会剔除单方面专精画师」——新增**逐维度榜首榜 `aspect_leaders`**（`person` / `expression` / `technique` / `lineart` / `clothing` / `color` / `lighting` / `tag` 各一名，带 `evidence` / `global_rank` / `in_string`）：某个方面最强的画师即便全局排名掉出 `limit`，也照样进入槽位池；没抢到槽位的榜首**不删除**，改为进入 **`try_next`**（建议权重 0.15 + 理由「它是某方面的最大贡献者，先加再比」）；`artist_string_slots` 增加 `from_aspect_leader` 标记。实测 `limit=5` 时，原本会被截掉的 `tayuido`（全局第 9）、`mdf_an`（16）、`optionaltypo`（22）、`valtor`（**133**）里，3 位直接拿到槽位、1 位进入 `try_next`；`verify.mjs` 增加 4 项自检（现共 81 项 `check()`）
+- **0.34.0**：`danbooru_artists_from_image` 修正「全局排名截断会剔除单方面专精画师」——新增**逐维度榜首榜 `aspect_leaders`**（`person` / `expression` / `technique` / `lineart` / `clothing` / `color` / `lighting` / `tag` 各一名，带 `evidence` / `global_rank` / `in_string`）：某个方面最强的画师即便全局排名掉出 `limit`，也照样进入槽位池；没抢到槽位的榜首**不删除**，改为进入 **`try_next`**（建议权重 0.15 + 理由「它是某方面的最大贡献者，先加再比」）；`artist_string_slots` 增加 `from_aspect_leader` 标记。实测 `limit=5` 时，原本会被截掉的 `tayuido`（全局第 9）、`mdf_an`（16）、`optionaltypo`（22）、`valtor`（**133**）里，3 位直接拿到槽位、1 位进入 `try_next`；`verify.mjs` 增加 4 项自检（现共 81 项 `check()`）；同时补齐参考图下载：`danbooru_pixel_style_match` 的 `reference_images` 现在接受**直接图片 URL / D 站帖子 URL（/posts/<id>，经 API 解析）/ 本地文件路径**，下载带 UA+Referer（CDN 防盗链），非图片响应与视频帖子给出明确错误，`verify.mjs` 增加帖子 URL 参考图自检（共 82 项）
 - **0.33.0**：`danbooru_style_match` 新增**成品画师串 `artist_soup`**（并加入本轮改动：**权重为 1 的 tag 裸输出，不再被 `::` 权重框包裹**——`artist_soup` 的 1.0 anchor 直接是 `hews`；`buildArtistString` / `naiWeightedName` 统一走 `formatWeightedTag`，权重 1 判定支持 `1` 与 `1.0`），——按 `1.0 / 0.85 / 0.6 / 0.5 / 0.4 / 0.3 / 0.2` 的权重形状（最多 7 位、`top3_share` 约 0.65~0.70）把最终候选拼成可直接粘贴的 NAI 串，输出 `string` / `artists[]` / `total_weight` / `top3_share`；两条 NAI 书写规则内置：**权重 1 不加 `::` 框**、**名字以数字结尾时在 `::` 前补空格**。该形状来自 2026-11-15 的实测回归：没有 1.0 锚的串会向「所有人的平均」漂移，而 ≤0.3 的长尾（0.24 / 0.16 / 0.12）只增加噪声；**删掉排第一的名字来「清理」画师串会让画面明显跑偏**
 - **0.32.0**：`danbooru_artists_from_image`（以图找画师）的交付物改为**画师串**——新增「六槽职责构成」（`body` 0.85 / `skin` 0.60 / `brush` 0.50 / `material` 0.40 / `accent` 0.20 / `theme` 0.30），一槽一位画师、同一位不重复占槽，权重按「该职责在画面里的占比」而不是检索分或画师名气给；输出 `artist_string`（NAI 语法，括号自动转义）与 `artist_string_slots`（每槽命中的维度证据），新增 `string_style`（`plain` / `artist_prefix`）与 `string_slots`；空槽跳过不凑数；`verify.mjs` 增加 4 项自检（脚本现共 77 项 `check()`）
 - **0.31.0**：`danbooru_pixel_style_match` 新增**年份标注**——对每个返回画师比较指定年份（默认去年+前年，如 2025/2024）的作品与参考图的像素相似度，在画师名后追加更贴近的年份：单年贴近 → `hews 2025`，两年都贴近 → `hews 2024 2025`；输出 `year_fit` / `years` / `artist_with_years` 与整份 `artist_string`；`year_check` / `years` / `year_samples` / `year_tolerance` 可调；`verify.mjs` 增加年份标注自检（共 68 项）
